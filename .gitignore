@@ -1,0 +1,50 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Node / frontend
+node_modules/
+.vite/
+coverage/
+frontend/dist/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Sensor data and model artifacts
+data/
+datasets/
+artifacts/
+models/*.joblib
+models/*.pkl
+*.wav
+*.pcm
+*.mp3
+
+# Databases and runtime files
+*.db
+*.sqlite
+*.sqlite3
+logs/
+tmp/
+.cache/

@@ -1,0 +1,41 @@
+name: Repository checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  contract-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate required module documents and JSON examples
+        shell: python
+        run: |
+          import json
+          import pathlib
+          import re
+
+          root = pathlib.Path("docs/module-specs")
+          required = [
+              "00_SHARED_CONTRACT.md",
+              "01_SENSOR_EDGE_HARDWARE.md",
+              "02_EDGE_ML_PIPELINE.md",
+              "03_BACKEND_DATA_INTELLIGENCE.md",
+              "04_RECOMMENDATION_FRONTEND.md",
+          ]
+          missing = [name for name in required if not (root / name).is_file()]
+          if missing:
+              raise SystemExit(f"Missing required module documents: {missing}")
+
+          count = 0
+          for path in root.glob("*.md"):
+              text = path.read_text(encoding="utf-8")
+              for block in re.findall(r"```json\s*\n(.*?)\n```", text, re.S):
+                  json.loads(block)
+                  count += 1
+          print(f"Validated {len(required)} required documents and {count} JSON examples")
