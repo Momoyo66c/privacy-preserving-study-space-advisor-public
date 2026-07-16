@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "window_id": "room_a-20260716T063010.000Z",
+  "room_id": "room_a",
+  "device_id": "pi5-a",
+  "window_start": "2026-07-16T06:30:10Z",
+  "window_end": "2026-07-16T06:30:15Z",
+  "thermal": {
+    "health": "ok",
+    "frame_count": 10
+  },
+  "radar": {
+    "health": "ok",
+    "sample_count": 50,
+    "tracks": [
+      {
+        "sample_offset_ms": 100,
+        "targets": [
+          {
+            "x_mm": -760,
+            "y_mm": 1600,
+            "speed_cm_s": 29,
+            "distance_resolution_mm": 120,
+            "valid": true,
+            "target_id": "target-b2c3d4e5-1"
+          },
+          {
+            "x_mm": 40,
+            "y_mm": 2190,
+            "speed_cm_s": 21,
+            "distance_resolution_mm": 140,
+            "valid": true,
+            "target_id": "target-b2c3d4e5-2"
+          },
+          {
+            "x_mm": 820,
+            "y_mm": 2870,
+            "speed_cm_s": 33,
+            "distance_resolution_mm": 160,
+            "valid": true,
+            "target_id": "target-b2c3d4e5-3"
+          }
+        ]
+      }
+    ]
+  },
+  "sound": {
+    "health": "ok",
+    "rms_mean": 0.341,
+    "rms_std": 0.047,
+    "peak": 0.672
+  },
+  "environment": {
+    "light_lux": 411.0,
+    "temperature_c": 25.0,
+    "humidity_pct": 62.2
+  },
+  "quality": {
+    "completeness": 0.98,
+    "warnings": []
+  }
+}

@@ -1,0 +1,58 @@
+room_id: room_a
+device_id: pi5-a
+window_seconds: 5
+
+simulator:
+  enabled: false
+  scenario: quiet_study_recommended
+  random_seed: 3025
+
+sensors:
+  thermal:
+    enabled: true
+    sample_rate_hz: 2
+    max_retries: 2
+    offline_threshold: 3
+    options:
+      i2c_frequency_hz: 800000
+      address: 51
+      minimum_c: -40
+      maximum_c: 300
+  radar:
+    enabled: true
+    sample_rate_hz: 10
+    max_retries: 1
+    offline_threshold: 3
+    options:
+      port: /dev/ttyUSB0
+      baud_rate: 256000
+      timeout_s: 0.25
+  sound:
+    enabled: true
+    sample_rate_hz: 4
+    max_retries: 1
+    offline_threshold: 3
+    options:
+      audio_sample_rate_hz: 8000
+      chunk_seconds: 0.1
+      channels: 1
+  light:
+    enabled: true
+    sample_rate_hz: 1
+    max_retries: 1
+    offline_threshold: 3
+  climate:
+    enabled: true
+    sample_rate_hz: 1
+    max_retries: 1
+    offline_threshold: 3
+
+storage:
+  data_dir: data/sessions
+  retention_days: 30
+  max_sessions: 100
+
+actuation:
+  device: log
+  buzzer_enabled: false
+  options: {}

@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "window_id": "room_a-20260716T063005.000Z",
+  "room_id": "room_a",
+  "device_id": "pi5-a",
+  "window_start": "2026-07-16T06:30:05Z",
+  "window_end": "2026-07-16T06:30:10Z",
+  "thermal": {
+    "health": "ok",
+    "frame_count": 10,
+    "frames_ref": "local://session-example/thermal/room_a-quiet.npz"
+  },
+  "radar": {
+    "health": "ok",
+    "sample_count": 50,
+    "tracks": [
+      {
+        "sample_offset_ms": 0,
+        "targets": [
+          {
+            "x_mm": -810,
+            "y_mm": 1540,
+            "speed_cm_s": 12,
+            "distance_resolution_mm": 120,
+            "valid": true,
+            "target_id": "target-a1b2c3d4-1"
+          }
+        ]
+      }
+    ]
+  },
+  "sound": {
+    "health": "ok",
+    "rms_mean": 0.121,
+    "rms_std": 0.012,
+    "peak": 0.231
+  },
+  "environment": {
+    "light_lux": 429.8,
+    "temperature_c": 24.6,
+    "humidity_pct": 60.1
+  },
+  "quality": {
+    "completeness": 0.99,
+    "warnings": []
+  }
+}
