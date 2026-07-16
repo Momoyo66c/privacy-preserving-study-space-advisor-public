@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "room_id": "room_a",
+  "generated_at": "2026-07-16T06:30:06Z",
+  "target_at": "2026-07-16T07:00:06Z",
+  "horizon_minutes": 30,
+  "predicted_occupancy_level": "low",
+  "confidence": 0.8,
+  "method": "recent_exponential_average",
+  "model_version": "deterministic-v1",
+  "input_start_at": "2026-07-16T05:30:05Z",
+  "input_end_at": "2026-07-16T06:30:05Z",
+  "fallback_reason": null
+}

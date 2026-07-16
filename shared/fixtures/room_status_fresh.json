@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0",
+  "room_id": "room_a",
+  "name": "Quiet Commons",
+  "location": "Level 2",
+  "observed_at": "2026-07-16T06:30:05Z",
+  "received_at": "2026-07-16T06:30:06Z",
+  "room_state": "quiet_study_recommended",
+  "occupancy_level": "low",
+  "suitability_score": 86,
+  "confidence": 0.88,
+  "features": {
+    "thermal_hot_region_count": 2,
+    "radar_active_target_count": 1,
+    "sound_rms_mean": 0.18,
+    "light_lux": 420,
+    "temperature_c": 24.8,
+    "humidity_pct": 61
+  },
+  "sensor_health": {
+    "thermal": "ok",
+    "radar": "ok",
+    "sound": "ok",
+    "environment": "ok"
+  },
+  "warnings": [],
+  "data_age_seconds": 1,
+  "is_stale": false,
+  "forecasts": [
+    {
+      "schema_version": "1.0",
+      "room_id": "room_a",
+      "generated_at": "2026-07-16T06:30:06Z",
+      "target_at": "2026-07-16T07:00:06Z",
+      "horizon_minutes": 30,
+      "predicted_occupancy_level": "low",
+      "confidence": 0.8,
+      "method": "recent_exponential_average",
+      "model_version": "deterministic-v1",
+      "input_start_at": "2026-07-16T05:30:05Z",
+      "input_end_at": "2026-07-16T06:30:05Z",
+      "fallback_reason": null
+    }
+  ]
+}

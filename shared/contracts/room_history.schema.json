@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RoomHistory",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "room_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "start_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "end_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "bucket_minutes": {
+      "type": "integer",
+      "enum": [
+        1,
+        5,
+        15,
+        30,
+        60
+      ]
+    },
+    "points": {
+      "type": "array",
+      "maxItems": 2000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bucket_start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "bucket_end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "observation_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "coverage": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "dominant_room_state": {
+            "type": "string",
+            "enum": [
+              "empty_or_low_activity",
+              "quiet_study_recommended",
+              "discussion_allowed",
+              "not_recommended_noisy_or_crowded",
+              "unknown"
+            ]
+          },
+          "last_room_state": {
+            "type": "string",
+            "enum": [
+              "empty_or_low_activity",
+              "quiet_study_recommended",
+              "discussion_allowed",
+              "not_recommended_noisy_or_crowded",
+              "unknown"
+            ]
+          },
+          "occupancy_level": {
+            "type": "string",
+            "enum": [
+              "empty",
+              "low",
+              "medium",
+              "high",
+              "unknown"
+            ]
+          },
+          "occupancy_mean": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 3
+          },
+          "suitability_mean": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "confidence_mean": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "sound_rms_mean": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "light_lux_mean": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "temperature_c_mean": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "humidity_pct_mean": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "bucket_start",
+          "bucket_end",
+          "observation_count",
+          "coverage",
+          "dominant_room_state",
+          "last_room_state",
+          "occupancy_level"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "room_id",
+    "start_at",
+    "end_at",
+    "bucket_minutes",
+    "points"
+  ]
+}

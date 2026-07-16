@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "request_id": "req-demo",
+  "generated_at": "2026-07-16T06:30:06Z",
+  "recommendations": [
+    {
+      "room_id": "room_a",
+      "rank": 1,
+      "score": 86,
+      "current_state": "quiet_study_recommended",
+      "occupancy_level": "low",
+      "forecast_30m": "low",
+      "confidence": 0.88,
+      "is_stale": false,
+      "reasons": [
+        "Stub ranking uses current suitability only"
+      ],
+      "explanation": "Stub recommendation; module 4 will provide final ranking.",
+      "explanation_source": "stub"
+    }
+  ],
+  "warnings": [
+    "RECOMMENDATION_STUB_ACTIVE"
+  ]
+}

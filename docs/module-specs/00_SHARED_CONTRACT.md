@@ -163,6 +163,7 @@ HTTP：`POST /api/v1/edge/observations`
 
 ```json
 {
+  "schema_version": "1.0",
   "accepted": true,
   "observation_id": "01J2Y7YQKQ4J0A4J8R6F5W0M1N",
   "server_received_at": "2026-07-16T06:30:06Z"
@@ -259,6 +260,7 @@ PUT /api/v1/edge/rooms/{room_id}/thermal-preview
 
 ```json
 {
+  "schema_version": "1.0",
   "error": {
     "code": "VALIDATION_ERROR",
     "message": "Human-readable summary",

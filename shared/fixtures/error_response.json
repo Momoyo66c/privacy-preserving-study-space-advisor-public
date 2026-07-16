@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Request validation failed",
+    "details": {},
+    "request_id": "req-demo"
+  }
+}
