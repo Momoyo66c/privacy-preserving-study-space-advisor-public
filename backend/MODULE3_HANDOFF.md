@@ -1,0 +1,40 @@
+# Module 3 Handoff
+
+## Runtime
+
+- Package: `study_space_api`
+- Development API: `http://localhost:8000`
+- OpenAPI: `http://localhost:8000/docs`
+- Default database: `backend/study_space.db` (ignored by Git)
+- Python: 3.11+; the full suite, migrations and real Uvicorn HTTP benchmark were verified on Python 3.11.6.
+
+Run `alembic upgrade head`, `study-space-api seed-demo --reset`, then `uvicorn study_space_api.main:app --host 127.0.0.1 --port 8000`.
+
+## Integration boundaries
+
+Module 2 posts the `shared/contracts/edge_observation.schema.json` payload to `/api/v1/edge/observations`. Retries must reuse the same ID and identical payload. Known missing feature summaries may be omitted or null; raw heat frames, audio, and persistent tracks are rejected by the strict model.
+
+Thermal preview uses its separate edge endpoint. It is fixed at 32 x 24 normalized values, held in one process for at most 30 seconds, and never reaches SQLAlchemy, backups, history, recommendations, or ordinary logs.
+
+Module 4 implements the asynchronous `RecommendationAdapter` protocol in `study_space_api.adapters.recommendation`. Module 3 currently ships a visibly marked deterministic stub; it is not the final personalized algorithm. Adapter failures fall back to the stub without losing core API availability.
+
+## Forecasting
+
+The active strategy uses recent exponential averaging, then same-weekday/time-slot history, current-value persistence, and finally unknown. Unknown observations are missing data, not empty rooms. Forecast results record their method, input time range, confidence, and fallback reason. The `backtest` command uses chronological evaluation and reports MAE/Macro F1 against persistence.
+
+The current synthetic backtest favors persistence over recent averaging. See `PERFORMANCE.md`; do not interpret either result as real-world model quality.
+
+## Privacy and security
+
+- No RGB, raw audio, complete thermal arrays in Observation, or cross-window identity data.
+- Logs and recommendation records contain IDs and summaries only.
+- Configure `EDGE_API_TOKEN` before accepting writes beyond localhost.
+- This prototype has no user authentication or production multi-tenant authorization.
+
+## Known limitations
+
+- SQLite and the in-memory preview cache target a single-process course prototype.
+- Synthetic history is for demonstrations and does not validate forecast accuracy.
+- Repository-level CI now includes dedicated Python 3.11 test/migration and Docker health-check jobs; `CI_HANDOFF.md` documents the required branch-protection checks.
+- Docker Desktop 4.82.0 / Engine 29.6.1 was smoke-tested locally on 2026-07-16: the Python 3.11 image built, migrations completed, the single Uvicorn worker became healthy, and the temporary container was removed.
+- Module 2 must confirm nullable feature behavior, and module 4 must replace the stub adapter.
