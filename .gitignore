@@ -1,9 +1,15 @@
+# Locally cloned third-party repositories (recreate with the clone script).
+/references/github/*
+!/references/github/.gitkeep
+
 # Secrets and local configuration
 .env
 .env.*
 !.env.example
 *.pem
 *.key
+secrets/
+WiFiCredentials.h
 
 # Python
 __pycache__/
@@ -25,11 +31,15 @@ node_modules/
 coverage/
 frontend/dist/
 
+# Embedded / build outputs
+.pio/
+
 # IDE / OS
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
+*.log
 
 # Sensor data and model artifacts
 data/
