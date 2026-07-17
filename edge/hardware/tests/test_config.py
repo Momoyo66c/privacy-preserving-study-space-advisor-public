@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
+import tomllib
 
 import pytest
 
 from study_space_hardware.config import config_from_dict, load_config
+
+
+PROJECT_ROOT = Path(__file__).parents[1]
 
 
 def test_example_config_loads() -> None:
@@ -54,3 +59,15 @@ def test_buzzer_cannot_be_enabled_in_committed_default_config() -> None:
                 "actuation": {"buzzer_enabled": True},
             }
         )
+
+
+def test_hardware_extra_includes_pi5_gpio_backend() -> None:
+    with (PROJECT_ROOT / "pyproject.toml").open("rb") as file:
+        project = tomllib.load(file)["project"]
+
+    hardware_dependencies = project["optional-dependencies"]["hardware"]
+    assert any(
+        dependency.startswith("lgpio>=")
+        and "platform_machine == 'aarch64'" in dependency
+        for dependency in hardware_dependencies
+    )

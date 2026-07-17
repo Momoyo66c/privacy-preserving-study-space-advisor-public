@@ -20,6 +20,7 @@ hardware = [
   "adafruit-circuitpython-bh1750>=1.0",
   "adafruit-circuitpython-mlx90640>=1.3",
   "gpiozero>=2.0",
+  "lgpio>=0.2.2.0; sys_platform == 'linux' and platform_machine == 'aarch64'",
   "pyserial>=3.5",
   "sounddevice>=0.5",
 ]

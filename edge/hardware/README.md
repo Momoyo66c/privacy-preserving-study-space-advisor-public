@@ -133,6 +133,10 @@ python -m pip install -e '.[hardware,dev]'
 python scripts/probe_sensors.py --config config/real.example.yaml
 ```
 
+在 64 位 Raspberry Pi OS 上，`hardware` extra 会同时安装 Pi 5 所需的
+`lgpio` 后端。安装后可先运行 `python -c "import board, lgpio"`，确认
+Blinka 与 GPIO 后端均可导入，再探测真实传感器。
+
 `probe_sensors.py` 对每个驱动输出连接状态、最近一次安全摘要和健康状态。它不会打印完整热矩阵或保存声音缓冲区。
 
 如果使用 micro:bit，将 `actuation.device` 改为 `microbit`，并在 `actuation.options.port` 设置串口。GPIO 模式需要在选项中提供 `red_pin`、`green_pin` 和 `blue_pin`。
