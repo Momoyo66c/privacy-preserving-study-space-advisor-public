@@ -98,7 +98,9 @@ I2C: /dev/i2c-1 enabled, no device address detected
 音频: 0 capture devices
 ESP32: compile/upload/hash verification passed
 串口: 5 consecutive PSSA_ESP32_HEARTBEAT lines received
+串口释放: 3 open/read/close cycles passed; no process retained the port
 真实配置探测: exit 0; missing sensors reported offline/degraded
+隐私文件: 0 WAV/PCM/MP3/FLAC files in deployment tree
 ```
 
 详细证据和仍待完成的真实传感器步骤见 `HARDWARE_SMOKE_TEST.md`。ESP32 烧录命令见 `firmware/README.md`。

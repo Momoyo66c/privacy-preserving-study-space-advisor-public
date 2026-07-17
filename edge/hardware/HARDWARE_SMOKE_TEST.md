@@ -32,7 +32,9 @@
 | ESP32 编译 | Flash 281,392 bytes（21%），全局变量 22,092 bytes（6%） |
 | ESP32 烧录 | 写入和哈希校验通过，硬复位成功 |
 | ESP32 串口 | 115200 baud 连续读取 5 条 `PSSA_ESP32_HEARTBEAT` |
+| ESP32 端口释放 | 连续 3 轮打开、读取和关闭，每轮收到 2 条心跳，结束后无进程占用串口 |
 | 真实配置降级 | 探测进程退出码 0；缺失设备返回 offline/degraded，未发生未处理异常 |
+| 隐私文件检查 | 部署目录内 WAV、PCM、MP3、FLAC 文件数量为 0 |
 
 ESP32 的硬件地址没有写入本文件。`/dev/ttyUSB0` 当前属于 ESP32，不能同时作为 `config/real.example.yaml` 中的 LD2450 端口。
 
@@ -98,7 +100,8 @@ find data/sessions -type f
 
 ## 4. 释放与重启
 
-- [ ] 正常结束采集后，可立即再次运行 `probe_sensors.py`。
+- [x] ESP32 串口连续 3 轮打开、读取和关闭均成功，结束后端口未被占用。
+- [ ] 真实传感器采集正常结束后，可立即再次运行 `probe_sensors.py`。
 - [ ] 中断进程后，串口、I2C 和 GPIO 未被持续占用。
 - [ ] LED/micro:bit 输出失败不会中断采样。
 
