@@ -119,6 +119,11 @@ ESP32: compile/upload/hash verification passed
 Raspberry Pi 模块目录测试: 36 passed in 0.80s
 Raspberry Pi 部署根目录测试: 36 passed
 Raspberry Pi 部署根目录 compileall: passed
+会话验收工具提交: a33e736
+Raspberry Pi 会话验收针对性测试: 5 passed
+Raspberry Pi 会话验收后完整回归: 41 passed
+Raspberry Pi 模拟会话 CLI: valid PASS
+Raspberry Pi 禁用 WAV 篡改检测: invalid PASS
 ```
 
 离线会话交付模块 2 前运行：
