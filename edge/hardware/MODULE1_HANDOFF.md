@@ -2,9 +2,9 @@
 
 ## 当前状态
 
-模块 1 的软件实现已完成，可在没有真实传感器的电脑上安装、测试、生成共享窗口和离线训练会话。自动化测试覆盖正常窗口、降级窗口、驱动异常、数据校验、隐私约束与两分钟模拟运行。
+模块 1 的软件实现已完成，并已部署到 Raspberry Pi 5。树莓派本机的 33 项测试、编译检查和两分钟实时模拟均通过。ESP32 烧录与串口心跳也已复验。
 
-真实 Raspberry Pi 5 与传感器尚未接入本开发环境，因此 `HARDWARE_SMOKE_TEST.md` 中的十分钟连续采集指标仍待执行。仓库中没有用模拟数据冒充真实采集样例。
+MLX90640、LD2450、BH1750、AHTx0 和音频输入设备尚未接入。`HARDWARE_SMOKE_TEST.md` 中的十分钟真实采集指标仍待执行，仓库没有用模拟数据冒充真实采集样例。
 
 ## 已完成
 
@@ -16,6 +16,8 @@
 - 日志、GPIO RGB LED 与 micro:bit 状态输出。
 - 共享 JSON Schema 和 5 个匿名夹具。
 - 单元测试与模拟集成测试。
+- Raspberry Pi 5 上的 `dev`/`hardware` 依赖安装和回归测试。
+- ESP32-D0WD-V3 的编译、烧录、哈希校验和 115200 baud 心跳验证。
 
 ## 模块 2 的入口
 
@@ -63,6 +65,9 @@ python scripts/collect_session.py \
 
 ## 已知限制与后续工作
 
+- 当前 `/dev/ttyUSB0` 属于 ESP32，不是 LD2450。连接雷达后必须使用独立串口，并优先使用 `/dev/serial/by-id/` 稳定路径。
+- Raspberry Pi 的 `/dev/i2c-1` 已启用，但总线扫描没有发现设备。先检查供电和 SDA/SCL 接线，再运行真实探测。
+- PortAudio 和 Python 音频依赖已安装，但系统目前没有音频采集设备。
 - 需要在实际 Raspberry Pi 5 上确认 MLX90640 的 800 kHz I2C 稳定性；不稳定时先降至 400 kHz。
 - 需要按具体 USB-TTL 设备调整 LD2450 串口路径。
 - 声卡设备选择目前使用 `sounddevice` 默认输入，部署时应在操作系统层固定默认设备。
@@ -80,6 +85,23 @@ python scripts/probe_sensors.py --config config/example.yaml
 ```
 
 真实硬件验收使用 `config/real.example.yaml` 和 `HARDWARE_SMOKE_TEST.md`。
+
+## 2026-07-18 树莓派验证记录
+
+```text
+部署提交: 5e9ce49
+pytest: 33 passed in 0.81s
+compileall: passed
+两分钟实时模拟: 24 windows, 2:00.20, exit 0
+实时模拟峰值内存: 25040 KiB
+I2C: /dev/i2c-1 enabled, no device address detected
+音频: 0 capture devices
+ESP32: compile/upload/hash verification passed
+串口: 5 consecutive PSSA_ESP32_HEARTBEAT lines received
+真实配置探测: exit 0; missing sensors reported offline/degraded
+```
+
+详细证据和仍待完成的真实传感器步骤见 `HARDWARE_SMOKE_TEST.md`。ESP32 烧录命令见 `firmware/README.md`。
 
 ## 外部代码与许可证
 

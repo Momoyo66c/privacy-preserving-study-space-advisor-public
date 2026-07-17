@@ -137,6 +137,12 @@ python scripts/probe_sensors.py --config config/real.example.yaml
 
 如果使用 micro:bit，将 `actuation.device` 改为 `microbit`，并在 `actuation.options.port` 设置串口。GPIO 模式需要在选项中提供 `red_pin`、`green_pin` 和 `blue_pin`。
 
+## ESP32 烧录与串口检查
+
+仓库提供最小 ESP32 串口烟雾固件，用于确认树莓派能够识别、编译、烧录和读取开发板。固件不采集传感器数据，也不连接网络。操作命令和成功输出见 [`firmware/README.md`](firmware/README.md)。
+
+烧录前必须读取芯片型号，并核对 `/dev/serial/by-id/`。`/dev/ttyUSB0` 只是动态设备名，不代表它一定是 LD2450。ESP32 与 LD2450 同时接入时应使用两个独立串口，并在真实配置中填写雷达对应的稳定设备路径。
+
 ## 离线采集
 
 模拟采集示例：
