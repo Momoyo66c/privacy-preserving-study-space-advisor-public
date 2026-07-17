@@ -64,6 +64,12 @@ class RadarFrameStream:
         self._buffer = bytearray()
         self.invalid_chunks = 0
 
+    @property
+    def buffered_bytes(self) -> int:
+        """Bytes retained while waiting for a possible frame boundary."""
+
+        return len(self._buffer)
+
     def feed(self, chunk: bytes) -> list[bytes]:
         if chunk:
             self._buffer.extend(chunk)
@@ -146,6 +152,7 @@ class LD2450Driver(BaseSensorDriver):
                     {
                         "valid_frames": self.valid_frames,
                         "invalid_chunks": self._stream.invalid_chunks,
+                        "buffered_bytes": self._stream.buffered_bytes,
                         "active_targets": sum(target.valid for target in targets),
                     }
                 )
@@ -165,6 +172,7 @@ class LD2450Driver(BaseSensorDriver):
                 )
             self.clock.sleep(0.001)
         self._tracker.details["invalid_chunks"] = self._stream.invalid_chunks
+        self._tracker.details["buffered_bytes"] = self._stream.buffered_bytes
         raise SensorReadError("timed out waiting for a complete LD2450 report")
 
     def _close(self) -> None:

@@ -18,6 +18,7 @@ MLX90640、LD2450、BH1750、AHTx0 和音频输入设备尚未接入。`HARDWARE
 - 日志、GPIO RGB LED 与 micro:bit 状态输出。
 - 共享 JSON Schema 和 5 个匿名夹具。
 - 单元测试与模拟集成测试。
+- LD2450 确定性随机分块/噪声/粘包/超时恢复和 MLX90640 损坏帧故障注入测试。
 - Raspberry Pi 5 上的 `dev`/`hardware` 依赖安装和回归测试。
 - ESP32-D0WD-V3 的编译、烧录、哈希校验和 115200 baud 心跳验证。
 

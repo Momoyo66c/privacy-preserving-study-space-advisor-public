@@ -238,7 +238,7 @@ edge/hardware/.venv/bin/python -m compileall -q \
   edge/hardware/src edge/hardware/scripts
 ```
 
-测试覆盖驱动错误隔离、损坏帧、LD2450 流重同步、声音不落盘、窗口完整度、确定性模拟、共享 JSON Schema、离线会话和两分钟模拟集成运行。
+测试覆盖驱动错误隔离、损坏帧、LD2450 的 100 组确定性随机分块/噪声/粘包压力、超时恢复、MLX90640 非有限值与越界温度、声音不落盘、窗口完整度、确定性模拟、共享 JSON Schema、离线会话和两分钟模拟集成运行。
 
 当前自动化测试已在无物理传感器的开发环境通过。真实硬件的 10 分钟连续采集、丢帧率、无效包率和资源占用仍需在 Raspberry Pi 上执行，记录模板见 `HARDWARE_SMOKE_TEST.md`。仓库不伪造真实硬件样例。
 

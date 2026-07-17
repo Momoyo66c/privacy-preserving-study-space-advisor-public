@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import random
+
+import pytest
+
 from study_space_hardware.clock import ManualClock
+from study_space_hardware.drivers.base import SensorReadError
 from study_space_hardware.drivers.ld2450 import (
     REPORT_HEADER,
     REPORT_TAIL,
@@ -59,6 +64,32 @@ def test_stream_recovers_from_noise_and_partial_frame() -> None:
     assert stream.invalid_chunks >= 1
 
 
+def test_stream_survives_deterministic_noise_and_random_chunking() -> None:
+    frame = _frame()
+    wire = b"\x10\x20noise" + frame + b"\x01\x02" + frame + frame
+    for seed in range(100):
+        randomizer = random.Random(seed)
+        stream = RadarFrameStream()
+        recovered: list[bytes] = []
+        offset = 0
+        while offset < len(wire):
+            size = randomizer.randint(1, 17)
+            recovered.extend(stream.feed(wire[offset : offset + size]))
+            offset += size
+        assert recovered == [frame, frame, frame], f"failed seed: {seed}"
+        assert stream.buffered_bytes <= len(REPORT_HEADER) - 1
+
+
+def test_stream_rejects_false_header_and_bounds_garbage_buffer() -> None:
+    stream = RadarFrameStream()
+    false_frame = REPORT_HEADER + b"\x01" * 24 + b"\x00\x00"
+
+    assert stream.feed(false_frame + _frame()) == [_frame()]
+    assert stream.invalid_chunks >= 1
+    assert stream.feed(b"\x00" * 1_000_000) == []
+    assert stream.buffered_bytes <= len(REPORT_HEADER) - 1
+
+
 def test_driver_reads_split_serial_frame_and_closes() -> None:
     fake = FakeSerial([_frame()[:9], _frame()[9:]])
     clock = ManualClock()
@@ -73,3 +104,24 @@ def test_driver_reads_split_serial_frame_and_closes() -> None:
     assert sum(target.valid for target in sample.values["targets"]) == 2
     driver.close()
     assert fake.closed is True
+
+
+def test_driver_recovers_after_timeout_without_restart() -> None:
+    fake = FakeSerial([])
+    driver = LD2450Driver(
+        serial_factory=lambda: fake,
+        timeout_s=0.005,
+        max_retries=0,
+        offline_threshold=1,
+        clock=ManualClock(),
+    )
+    driver.start()
+
+    with pytest.raises(SensorReadError, match="timed out"):
+        driver.read()
+    assert driver.health().details["buffered_bytes"] == 0
+
+    fake.chunks.append(_frame())
+    sample = driver.read()
+    assert sum(target.valid for target in sample.values["targets"]) == 2
+    assert driver.health().status.value == "ok"
