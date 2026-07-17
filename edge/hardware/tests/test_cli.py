@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 from typing import Callable, Sequence
 
@@ -41,3 +43,22 @@ def test_probe_cli_outputs_only_safe_sensor_summaries(capsys) -> None:
     assert payload["thermal"]["sample"]["frame_shape"] == [24, 32]
     assert "temperatures_c" not in json.dumps(payload["thermal"])
     assert payload["sound"]["sample"]["raw_audio_persisted"] is False
+
+
+def test_collection_cli_does_not_eagerly_import_validation_stack() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; import study_space_hardware.cli; "
+                "assert 'numpy' not in sys.modules; "
+                "assert 'jsonschema' not in sys.modules"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr

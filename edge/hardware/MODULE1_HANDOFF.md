@@ -133,6 +133,11 @@ Raspberry Pi LD2450 驱动覆盖率: 93%
 Mac 全新 wheel 环境四入口: passed
 Raspberry Pi 全新 wheel 环境四入口: passed
 Raspberry Pi 全新 wheel 环境 pip check: passed
+Raspberry Pi 间歇故障长测: 360 windows / 30:01.16 / exit 0
+长测峰值 RSS: 42,560 KiB
+长测共享 Schema: 360 passed；window_id 360 unique
+长测立即重启: passed
+长测采集目录禁用媒体文件: 0
 ```
 
 离线会话交付模块 2 前运行：
