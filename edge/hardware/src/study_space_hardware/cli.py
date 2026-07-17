@@ -14,6 +14,7 @@ from .bootstrap import build_orchestrator
 from .clock import ManualClock, SystemClock
 from .config import HardwareConfig, load_config
 from .models import RadarTarget, SensorSample
+from .session_validation import validate_session
 from .storage import SessionWriter, enforce_session_retention
 
 
@@ -193,3 +194,15 @@ def collect_main(argv: Sequence[str] | None = None) -> int:
         )
     )
     return 0
+
+
+def verify_main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Validate an offline session without modifying it"
+    )
+    parser.add_argument("session_path")
+    parser.add_argument("--schema")
+    args = parser.parse_args(argv)
+    report = validate_session(args.session_path, schema_path=args.schema)
+    print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+    return 0 if report.valid else 1

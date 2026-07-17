@@ -181,6 +181,18 @@ data/sessions/<session_id>/
 
 `--known-anomaly` 用于记录不含个人身份的已知采集异常，可以重复传入。内容会按条目写入 `session.json` 的 `known_anomalies` 数组；没有已知异常时保存空数组。
 
+### 验证离线会话
+
+采集结束后运行只读验收工具：
+
+```bash
+python scripts/verify_session.py data/sessions/SESSION_ID
+# 安装后的等价入口：
+study-space-verify-session data/sessions/SESSION_ID
+```
+
+验收工具检查 `session.json` 隐私字段、`windows.jsonl` 共享 Schema、文件 SHA-256、热帧 NPZ 的 `(N, 768)` 形状和窗口帧数，同时拒绝符号链接、未登记文件以及音频、RGB 图像和视频扩展名。成功时输出 `"valid": true` 并返回 0；任何错误都会列在 `errors` 中并返回 1。工具不会修复或改写会话。
+
 ## 窗口契约
 
 JSON Schema 位于 `../../shared/contracts/sensor_window.schema.json`，示例位于 `../../shared/fixtures/`。

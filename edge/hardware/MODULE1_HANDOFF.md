@@ -14,6 +14,7 @@ MLX90640、LD2450、BH1750、AHTx0 和音频输入设备尚未接入。`HARDWARE
 - 5–10 秒非重叠窗口、完整度计算、警告和窗口局部雷达 ID。
 - 本地 JSONL + NPZ 会话、SHA-256 校验和与会话数量保留策略。
 - 离线会话使用结构化 `known_anomalies` 数组记录不含个人身份的已知采集异常。
+- `study-space-verify-session` 对会话执行共享 Schema、校验和、NPZ 和隐私文件只读验收。
 - 日志、GPIO RGB LED 与 micro:bit 状态输出。
 - 共享 JSON Schema 和 5 个匿名夹具。
 - 单元测试与模拟集成测试。
@@ -118,6 +119,12 @@ ESP32: compile/upload/hash verification passed
 Raspberry Pi 模块目录测试: 36 passed in 0.80s
 Raspberry Pi 部署根目录测试: 36 passed
 Raspberry Pi 部署根目录 compileall: passed
+```
+
+离线会话交付模块 2 前运行：
+
+```bash
+study-space-verify-session data/sessions/SESSION_ID
 ```
 
 详细证据和仍待完成的真实传感器步骤见 `HARDWARE_SMOKE_TEST.md`。ESP32 烧录命令见 `firmware/README.md`。
