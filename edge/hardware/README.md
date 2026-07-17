@@ -159,7 +159,8 @@ python scripts/collect_session.py \
   --room room_a \
   --scenario quiet_study_recommended \
   --duration 300 \
-  --participant-range 1-4
+  --participant-range 1-4 \
+  --known-anomaly "thermal sensor warm-up dropped one frame"
 ```
 
 真实采集时改用 `config/real.example.yaml` 并加入 `--realtime`。输出结构：
@@ -174,6 +175,8 @@ data/sessions/<session_id>/
 ```
 
 `windows.jsonl` 可直接交给模块 2。热帧通过 `thermal.frames_ref` 指向同一会话内的本地 NPZ 文件。`checksums.json` 保存每个文件的 SHA-256。会话元数据明确记录 `raw_audio_persisted=false`，且不包含姓名或学号。
+
+`--known-anomaly` 用于记录不含个人身份的已知采集异常，可以重复传入。内容会按条目写入 `session.json` 的 `known_anomalies` 数组；没有已知异常时保存空数组。
 
 ## 窗口契约
 

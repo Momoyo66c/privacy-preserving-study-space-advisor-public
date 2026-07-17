@@ -142,6 +142,12 @@ def collect_main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--duration", type=float, required=True)
     parser.add_argument("--participant-range")
     parser.add_argument("--notes", default="")
+    parser.add_argument(
+        "--known-anomaly",
+        action="append",
+        default=[],
+        help="Known non-personal anomaly; repeat the option for multiple entries",
+    )
     parser.add_argument("--realtime", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
@@ -159,6 +165,7 @@ def collect_main(argv: Sequence[str] | None = None) -> int:
         scenario=args.scenario,
         participant_range=args.participant_range,
         notes=args.notes,
+        known_anomalies=args.known_anomaly,
         now=clock.now_utc(),
     )
     orchestrator = build_orchestrator(config, clock=clock)

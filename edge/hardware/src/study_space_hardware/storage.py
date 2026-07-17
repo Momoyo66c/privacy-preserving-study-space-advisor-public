@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+from collections.abc import Sequence
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -40,6 +41,7 @@ class SessionWriter:
         base_dir: str | Path | None = None,
         participant_range: str | None = None,
         notes: str = "",
+        known_anomalies: Sequence[str] | None = None,
         now: datetime | None = None,
     ) -> None:
         started_at = now or datetime.now(timezone.utc)
@@ -56,6 +58,16 @@ class SessionWriter:
         self.session_path = self.path / "session.json"
         self.checksums_path = self.path / "checksums.json"
         self.window_count = 0
+        anomaly_values = (
+            (known_anomalies,)
+            if isinstance(known_anomalies, str)
+            else known_anomalies or ()
+        )
+        normalized_anomalies = [
+            str(value).strip()
+            for value in anomaly_values
+            if str(value).strip()
+        ]
         self._metadata: dict[str, Any] = {
             "schema_version": "1.0",
             "session_id": self.session_id,
@@ -66,6 +78,7 @@ class SessionWriter:
             "ended_at": None,
             "participant_range": participant_range,
             "operator_notes": notes,
+            "known_anomalies": normalized_anomalies,
             "privacy": {
                 "names_recorded": False,
                 "student_ids_recorded": False,
