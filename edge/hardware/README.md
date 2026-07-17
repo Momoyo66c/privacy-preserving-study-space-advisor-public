@@ -124,9 +124,11 @@ ls -l /dev/ttyUSB* /dev/ttyACM*
 
 ## 运行真实驱动
 
-安装系统所需的 PortAudio 后，再安装硬件依赖。Raspberry Pi OS 的具体包名可能随版本变化。
+先安装 PortAudio、I²C 工具和 Pi 5 `lgpio` 的构建依赖，再安装 Python
+硬件依赖。以下命令已在 64 位 Raspberry Pi OS（Debian Trixie）验证：
 
 ```bash
+sudo apt install i2c-tools portaudio19-dev liblgpio-dev swig
 cd edge/hardware
 source .venv/bin/activate
 python -m pip install -e '.[hardware,dev]'

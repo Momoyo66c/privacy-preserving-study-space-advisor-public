@@ -13,7 +13,7 @@
 | Raspberry Pi 型号 | Raspberry Pi 5，aarch64 |
 | Raspberry Pi OS 版本 | Debian Trixie，内核 `6.18.34+rpt-rpi-2712` |
 | Python 版本 | 3.13.5 |
-| Git commit | `5e9ce49` |
+| Git commit | `b232ee1` |
 | 配置文件 | `config/example.yaml`、`config/real.example.yaml` |
 | 已连接硬件 | ESP32-D0WD-V3，通过 CH340 接入 `/dev/ttyUSB0` |
 | 未检测到的设备 | MLX90640、LD2450、BH1750、AHTx0、音频输入设备 |
@@ -24,7 +24,8 @@
 |---|---|
 | 树莓派部署 | 模块 1 已部署到 `/home/pi/privacy-study-space-advisor` |
 | Python 环境 | `.venv` 已安装 `dev` 与 `hardware` 依赖 |
-| 自动测试 | `33 passed in 0.81s` |
+| 自动测试 | `34 passed in 0.88s` |
+| Pi 5 GPIO 后端 | 安装 `swig` 与 `liblgpio-dev` 后，`board`/`lgpio` 导入通过 |
 | 两分钟实时模拟 | 24 个 5 秒窗口，耗时 2:00.20，退出码 0 |
 | 模拟峰值内存 | 25,040 KiB |
 | I²C | 已启用 `/dev/i2c-1`，总线扫描未发现从设备 |

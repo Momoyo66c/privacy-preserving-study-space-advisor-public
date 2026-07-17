@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-模块 1 的软件实现已完成，并已部署到 Raspberry Pi 5。树莓派本机的 33 项测试、编译检查和两分钟实时模拟均通过。ESP32 烧录与串口心跳也已复验。
+模块 1 的软件实现已完成，并已部署到 Raspberry Pi 5。树莓派本机的 34 项测试、编译检查和两分钟实时模拟均通过。ESP32 烧录与串口心跳也已复验。
 
 MLX90640、LD2450、BH1750、AHTx0 和音频输入设备尚未接入。`HARDWARE_SMOKE_TEST.md` 中的十分钟真实采集指标仍待执行，仓库没有用模拟数据冒充真实采集样例。
 
@@ -89,9 +89,10 @@ python scripts/probe_sensors.py --config config/example.yaml
 ## 2026-07-18 树莓派验证记录
 
 ```text
-部署提交: 5e9ce49
-pytest: 33 passed in 0.81s
+部署提交: b232ee1
+pytest: 34 passed in 0.88s
 compileall: passed
+Pi 5 GPIO: board/lgpio imports passed after installing swig and liblgpio-dev
 两分钟实时模拟: 24 windows, 2:00.20, exit 0
 实时模拟峰值内存: 25040 KiB
 I2C: /dev/i2c-1 enabled, no device address detected
