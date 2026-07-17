@@ -138,6 +138,9 @@ Raspberry Pi 间歇故障长测: 360 windows / 30:01.16 / exit 0
 长测共享 Schema: 360 passed；window_id 360 unique
 长测立即重启: passed
 长测采集目录禁用媒体文件: 0
+延迟导入后 Pi 完整回归: 55 passed / 84.59% coverage
+延迟导入后实时对照: 24 windows / 2:00.17 / exit 0
+延迟导入后峰值 RSS: 24,544 KiB（降低约 42.3%）
 ```
 
 离线会话交付模块 2 前运行：
