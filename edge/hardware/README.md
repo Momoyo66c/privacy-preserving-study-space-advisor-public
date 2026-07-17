@@ -74,6 +74,8 @@ edge/hardware/
 
 `config/example.yaml` 默认启用模拟器，适合开发和 CI。`config/real.example.yaml` 关闭模拟器，作为 Raspberry Pi 配置起点。
 
+所有采集类 CLI 都要求显式传入 `--config`。这样从 wheel 安装后不会依赖源码目录中的隐式路径，也能在日志和复现实验时明确记录所用配置。
+
 主要字段：
 
 | 字段 | 含义 |
@@ -239,6 +241,8 @@ edge/hardware/.venv/bin/python -m compileall -q \
 ```
 
 测试覆盖驱动错误隔离、损坏帧、LD2450 的 100 组确定性随机分块/噪声/粘包压力、超时恢复、MLX90640 非有限值与越界温度、声音不落盘、窗口完整度、确定性模拟、共享 JSON Schema、离线会话和两分钟模拟集成运行。
+
+`.github/workflows/module1-ci.yml` 使用单个顺序作业执行完整测试、80% 总覆盖率门禁、编译检查和 wheel 构建。
 
 当前自动化测试已在无物理传感器的开发环境通过。真实硬件的 10 分钟连续采集、丢帧率、无效包率和资源占用仍需在 Raspberry Pi 上执行，记录模板见 `HARDWARE_SMOKE_TEST.md`。仓库不伪造真实硬件样例。
 

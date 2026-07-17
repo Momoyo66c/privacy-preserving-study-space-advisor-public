@@ -1,0 +1,41 @@
+name: Module 1 CI
+
+on:
+  pull_request:
+    paths:
+      - "edge/hardware/**"
+      - "shared/contracts/**"
+      - "shared/fixtures/**"
+      - ".github/workflows/module1-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "edge/hardware/**"
+      - "shared/contracts/**"
+      - "shared/fixtures/**"
+      - ".github/workflows/module1-ci.yml"
+
+jobs:
+  module1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: edge/hardware/pyproject.toml
+      - name: Install module and test dependencies
+        run: python -m pip install -e './edge/hardware[dev]'
+      - name: Run tests and coverage gate
+        working-directory: edge/hardware
+        run: >-
+          python -m pytest
+          --cov=study_space_hardware
+          --cov-fail-under=80
+          --cov-report=term
+      - name: Compile Python sources
+        run: python -m compileall -q edge/hardware/src edge/hardware/scripts
+      - name: Build wheel
+        run: python -m pip wheel edge/hardware --no-deps --wheel-dir /tmp/module1-wheel

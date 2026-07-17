@@ -7,7 +7,6 @@ import json
 import logging
 import math
 from dataclasses import replace
-from pathlib import Path
 from typing import Sequence
 
 from .bootstrap import build_orchestrator
@@ -16,9 +15,6 @@ from .config import HardwareConfig, load_config
 from .models import RadarTarget, SensorSample
 from .session_validation import validate_session
 from .storage import SessionWriter, enforce_session_retention
-
-
-DEFAULT_CONFIG = Path(__file__).parents[2] / "config" / "example.yaml"
 
 
 def _configure_logging(verbose: bool) -> None:
@@ -83,7 +79,7 @@ def _sample_summary(sample: SensorSample) -> dict[str, object]:
 
 def simulator_main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run deterministic sensor simulation")
-    parser.add_argument("--config", default=str(DEFAULT_CONFIG))
+    parser.add_argument("--config", required=True)
     parser.add_argument("--scenario")
     parser.add_argument("--windows", type=int, default=1)
     parser.add_argument("--realtime", action="store_true")
@@ -107,7 +103,7 @@ def simulator_main(argv: Sequence[str] | None = None) -> int:
 
 def probe_main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Probe configured sensors safely")
-    parser.add_argument("--config", default=str(DEFAULT_CONFIG))
+    parser.add_argument("--config", required=True)
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
     _configure_logging(args.verbose)
@@ -137,7 +133,7 @@ def probe_main(argv: Sequence[str] | None = None) -> int:
 
 def collect_main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Collect an offline sensor session")
-    parser.add_argument("--config", default=str(DEFAULT_CONFIG))
+    parser.add_argument("--config", required=True)
     parser.add_argument("--room", required=True)
     parser.add_argument("--scenario", required=True)
     parser.add_argument("--duration", type=float, required=True)
