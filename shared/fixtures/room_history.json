@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "room_id": "room_a",
+  "start_at": "2026-07-16T06:25:00Z",
+  "end_at": "2026-07-16T06:30:00Z",
+  "bucket_minutes": 5,
+  "points": [
+    {
+      "bucket_start": "2026-07-16T06:25:00Z",
+      "bucket_end": "2026-07-16T06:30:00Z",
+      "observation_count": 60,
+      "coverage": 1,
+      "dominant_room_state": "quiet_study_recommended",
+      "last_room_state": "quiet_study_recommended",
+      "occupancy_level": "low",
+      "occupancy_mean": 1,
+      "suitability_mean": 86,
+      "confidence_mean": 0.88,
+      "sound_rms_mean": 0.18,
+      "light_lux_mean": 420,
+      "temperature_c_mean": 24.8,
+      "humidity_pct_mean": 61
+    }
+  ]
+}

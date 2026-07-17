@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "observation_id": "01J2Y7YQKQ4J0A4J8R6F5W0M1N",
+  "room_id": "room_a",
+  "device_id": "pi5-a",
+  "observed_at": "2026-07-16T06:30:05Z",
+  "window_seconds": 5,
+  "room_state": "quiet_study_recommended",
+  "occupancy_level": "low",
+  "suitability_score": 86,
+  "confidence": 0.88,
+  "features": {
+    "thermal_hot_region_count": 2,
+    "radar_active_target_count": 1,
+    "sound_rms_mean": 0.18,
+    "light_lux": 420,
+    "temperature_c": 24.8,
+    "humidity_pct": 61
+  },
+  "sensor_health": {
+    "thermal": "ok",
+    "radar": "ok",
+    "sound": "ok",
+    "environment": "ok"
+  },
+  "model": {
+    "name": "room-state-random-forest",
+    "version": "1.0.0",
+    "feature_schema_version": "1.0"
+  },
+  "warnings": []
+}

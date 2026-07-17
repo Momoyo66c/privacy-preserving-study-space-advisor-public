@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "profile_id": "demo-user",
+  "study_mode": "quiet",
+  "quiet_priority": 0.8,
+  "low_occupancy_priority": 0.7,
+  "brightness_priority": 0.3,
+  "comfort_priority": 0.4,
+  "distance_priority": 0.2,
+  "preferred_temperature_c": null
+}

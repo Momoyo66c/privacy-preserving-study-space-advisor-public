@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ThermalPreview",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "room_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "width": {
+      "const": 32
+    },
+    "height": {
+      "const": 24
+    },
+    "values": {
+      "type": "array",
+      "items": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "minItems": 768,
+      "maxItems": 768
+    },
+    "normalization": {
+      "const": "window_min_max_clipped"
+    },
+    "expires_in_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 30
+    }
+  },
+  "required": [
+    "schema_version",
+    "room_id",
+    "captured_at",
+    "width",
+    "height",
+    "values",
+    "normalization",
+    "expires_in_seconds"
+  ]
+}

@@ -1,0 +1,62 @@
+name: Backend CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-python311:
+    name: backend-python311
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - name: Install backend development dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Run backend and shared-contract tests
+        run: python -m pytest --cov=study_space_api --cov-report=term
+      - name: Upgrade an empty database to head
+        run: python -m alembic upgrade head
+        env:
+          DATABASE_URL: sqlite:///./ci.db
+      - name: Check for model and migration drift
+        run: python -m alembic check
+        env:
+          DATABASE_URL: sqlite:///./ci.db
+
+  backend-container:
+    name: backend-container
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the backend image
+        run: docker build --tag study-space-api:ci backend
+      - name: Start the backend container
+        run: docker run --detach --name study-space-api-ci --publish 18000:8000 study-space-api:ci
+      - name: Wait for migrations and health
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:18000/health | grep --quiet '"database":"ok"'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs study-space-api-ci
+          exit 1
+      - name: Remove the backend container
+        if: always()
+        run: docker rm --force study-space-api-ci || true

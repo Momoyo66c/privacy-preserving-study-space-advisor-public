@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RecommendationResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "room_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "rank": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "current_state": {
+            "type": "string",
+            "enum": [
+              "empty_or_low_activity",
+              "quiet_study_recommended",
+              "discussion_allowed",
+              "not_recommended_noisy_or_crowded",
+              "unknown"
+            ]
+          },
+          "occupancy_level": {
+            "type": "string",
+            "enum": [
+              "empty",
+              "low",
+              "medium",
+              "high",
+              "unknown"
+            ]
+          },
+          "forecast_30m": {
+            "type": "string",
+            "enum": [
+              "empty",
+              "low",
+              "medium",
+              "high",
+              "unknown"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "is_stale": {
+            "type": "boolean"
+          },
+          "reasons": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 4,
+            "items": {
+              "type": "string"
+            }
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "explanation_source": {
+            "type": "string",
+            "enum": [
+              "stub",
+              "template",
+              "llm"
+            ]
+          }
+        },
+        "required": [
+          "room_id",
+          "rank",
+          "score",
+          "current_state",
+          "occupancy_level",
+          "forecast_30m",
+          "confidence",
+          "is_stale",
+          "reasons",
+          "explanation",
+          "explanation_source"
+        ]
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "request_id",
+    "generated_at",
+    "recommendations",
+    "warnings"
+  ]
+}
