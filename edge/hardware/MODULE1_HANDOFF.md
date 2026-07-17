@@ -130,6 +130,9 @@ Raspberry Pi 故障注入针对性测试: 14 passed
 Raspberry Pi 故障注入后完整回归: 49 passed
 Raspberry Pi 覆盖率门禁: 80.54%（要求 80%）
 Raspberry Pi LD2450 驱动覆盖率: 93%
+Mac 全新 wheel 环境四入口: passed
+Raspberry Pi 全新 wheel 环境四入口: passed
+Raspberry Pi 全新 wheel 环境 pip check: passed
 ```
 
 离线会话交付模块 2 前运行：
