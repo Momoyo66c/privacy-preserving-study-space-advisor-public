@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
 from study_space_hardware.bootstrap import build_orchestrator
 from study_space_hardware.clock import ManualClock
@@ -8,6 +9,9 @@ from study_space_hardware.config import load_config
 from study_space_hardware.drivers.base import BaseSensorDriver, SensorStartError
 from study_space_hardware.models import SampleQuality, SensorSample
 from study_space_hardware.orchestrator import SensorOrchestrator
+
+
+EXAMPLE_CONFIG = Path(__file__).parents[1] / "config/example.yaml"
 
 
 class RecoveringStartDriver(BaseSensorDriver):
@@ -39,7 +43,7 @@ class RecoveringStartDriver(BaseSensorDriver):
 
 
 def test_two_virtual_minutes_run_without_unhandled_exception() -> None:
-    config = load_config("config/example.yaml")
+    config = load_config(EXAMPLE_CONFIG)
     clock = ManualClock()
     orchestrator = build_orchestrator(config, clock=clock)
     try:
@@ -52,7 +56,7 @@ def test_two_virtual_minutes_run_without_unhandled_exception() -> None:
 
 
 def test_single_offline_sensor_still_emits_windows() -> None:
-    config = load_config("config/example.yaml")
+    config = load_config(EXAMPLE_CONFIG)
     config = replace(
         config,
         simulator=replace(config.simulator, scenario="degraded_radar"),

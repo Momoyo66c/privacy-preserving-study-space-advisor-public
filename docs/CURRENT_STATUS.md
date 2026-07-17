@@ -1,6 +1,6 @@
 # 当前状态
 
-更新时间：2026-07-18 02:17 SGT
+更新时间：2026-07-18 02:21 SGT
 
 ## 当前结论
 
@@ -22,6 +22,7 @@
 | 当前限定阶段终验 | 已完成 | 源码、用途、许可证和三层骨架均有独立记录；模块 01 测试 34 项通过 |
 | 模块 01 会话异常元数据 | 已完成 | 新增可重复 `--known-anomaly` 和 `session.json.known_anomalies`；本机与 Raspberry Pi 全套测试均为 35 项 |
 | 模块 01 雷达端口安全配置 | 已完成 | `real.example.yaml` 必须从 `RADAR_PORT` 读取独立雷达串口；本机与 Raspberry Pi 全套测试均为 36 项 |
+| 模块 01 测试路径兼容 | 本地完成 | 配置夹具改为基于测试文件定位；模块目录和仓库根目录运行均为 36 项通过 |
 
 ## 当前风险
 
@@ -53,7 +54,9 @@
 - Raspberry Pi 未设置 `RADAR_PORT` 加载真实配置：按预期失败，并明确报告缺少环境变量。
 - Raspberry Pi 设置 `RADAR_PORT=/dev/ld2450-not-connected` 执行真实探测：雷达报告未连接，进程正常退出，未访问 ESP32 串口。
 - Raspberry Pi 运行配置测试：7 项通过；完整回归：36 项通过；编译检查：通过。
+- 本机从 `edge/hardware/` 运行完整回归：36 项通过。
+- 本机从仓库根目录运行 `edge/hardware/.venv/bin/python -m pytest -q edge/hardware/tests`：36 项通过。
 
 ## 下一步
 
-提交并推送 Raspberry Pi 雷达端口安全验证记录。没有新传感器时，模块 01 剩余验收只包括真实传感器 10 分钟采集、资源指标、重启检查和匿名真实样例。
+提交并推送测试工作目录兼容修改，然后在 Raspberry Pi 的模块目录与部署根目录分别验证。

@@ -10,10 +10,12 @@ from study_space_hardware.config import config_from_dict, load_config
 
 
 PROJECT_ROOT = Path(__file__).parents[1]
+EXAMPLE_CONFIG = PROJECT_ROOT / "config/example.yaml"
+REAL_CONFIG = PROJECT_ROOT / "config/real.example.yaml"
 
 
 def test_example_config_loads() -> None:
-    config = load_config("config/example.yaml")
+    config = load_config(EXAMPLE_CONFIG)
     assert config.room_id == "room_a"
     assert config.window_seconds == 5
     assert config.sensors["thermal"].sample_rate_hz == 2
@@ -24,7 +26,7 @@ def test_real_example_config_loads_with_explicit_radar_port(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("RADAR_PORT", "/dev/serial/by-id/ld2450-test")
-    config = load_config("config/real.example.yaml")
+    config = load_config(REAL_CONFIG)
     assert config.simulator.enabled is False
     assert config.sensors["radar"].options["port"] == (
         "/dev/serial/by-id/ld2450-test"
@@ -37,7 +39,7 @@ def test_real_example_config_rejects_missing_radar_port(
 ) -> None:
     monkeypatch.delenv("RADAR_PORT", raising=False)
     with pytest.raises(ValueError, match="missing environment variable: RADAR_PORT"):
-        load_config("config/real.example.yaml")
+        load_config(REAL_CONFIG)
 
 
 def test_environment_variable_expansion(monkeypatch: pytest.MonkeyPatch) -> None:

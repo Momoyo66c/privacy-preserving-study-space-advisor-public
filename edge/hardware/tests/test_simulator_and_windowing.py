@@ -12,10 +12,11 @@ from study_space_hardware.config import load_config
 
 
 REPOSITORY_ROOT = Path(__file__).parents[3]
+EXAMPLE_CONFIG = Path(__file__).parents[1] / "config/example.yaml"
 
 
 def _window(scenario: str):
-    config = load_config("config/example.yaml")
+    config = load_config(EXAMPLE_CONFIG)
     config = replace(
         config,
         simulator=replace(config.simulator, scenario=scenario),
@@ -66,7 +67,7 @@ def test_thermal_offline_degrades_without_crashing() -> None:
 
 
 def test_target_namespace_changes_at_window_boundary() -> None:
-    config = load_config("config/example.yaml")
+    config = load_config(EXAMPLE_CONFIG)
     orchestrator = build_orchestrator(config, clock=ManualClock())
     try:
         first = orchestrator.run_window()

@@ -16,8 +16,11 @@ from study_space_hardware.config import load_config
 from study_space_hardware.storage import SessionWriter, enforce_session_retention
 
 
+EXAMPLE_CONFIG = Path(__file__).parents[1] / "config/example.yaml"
+
+
 def test_session_writer_saves_npz_and_never_audio(tmp_path) -> None:
-    config = load_config("config/example.yaml")
+    config = load_config(EXAMPLE_CONFIG)
     config = replace(
         config,
         storage=replace(config.storage, data_dir=str(tmp_path)),
@@ -83,7 +86,7 @@ def test_collect_cli_records_repeatable_known_anomalies(
     tmp_path: Path,
     capsys,
 ) -> None:
-    raw = yaml.safe_load(Path("config/example.yaml").read_text(encoding="utf-8"))
+    raw = yaml.safe_load(EXAMPLE_CONFIG.read_text(encoding="utf-8"))
     raw["storage"]["data_dir"] = str(tmp_path / "sessions")
     config_path = tmp_path / "config.yaml"
     config_path.write_text(yaml.safe_dump(raw), encoding="utf-8")
