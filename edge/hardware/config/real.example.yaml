@@ -24,7 +24,7 @@ sensors:
     max_retries: 1
     offline_threshold: 3
     options:
-      port: /dev/ttyUSB0
+      port: ${RADAR_PORT}
       baud_rate: 256000
       timeout_s: 0.25
   sound:

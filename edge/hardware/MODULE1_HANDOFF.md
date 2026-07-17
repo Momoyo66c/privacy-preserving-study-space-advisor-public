@@ -67,6 +67,7 @@ python scripts/collect_session.py \
 ## 已知限制与后续工作
 
 - 当前 `/dev/ttyUSB0` 属于 ESP32，不是 LD2450。连接雷达后必须使用独立串口，并优先使用 `/dev/serial/by-id/` 稳定路径。
+- `config/real.example.yaml` 要求显式设置 `RADAR_PORT`；未设置时会安全拒绝加载，避免误用 ESP32 串口。
 - Raspberry Pi 的 `/dev/i2c-1` 已启用，但总线扫描没有发现设备。先检查供电和 SDA/SCL 接线，再运行真实探测。
 - PortAudio 和 Python 音频依赖已安装，但系统目前没有音频采集设备。
 - 需要在实际 Raspberry Pi 5 上确认 MLX90640 的 800 kHz I2C 稳定性；不稳定时先降至 400 kHz。

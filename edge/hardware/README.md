@@ -132,8 +132,11 @@ sudo apt install i2c-tools portaudio19-dev liblgpio-dev swig
 cd edge/hardware
 source .venv/bin/activate
 python -m pip install -e '.[hardware,dev]'
+export RADAR_PORT=/dev/serial/by-id/REPLACE_WITH_LD2450_USB_TTL_DEVICE
 python scripts/probe_sensors.py --config config/real.example.yaml
 ```
+
+`RADAR_PORT` 必须显式设置为 LD2450 独立 USB-TTL 的稳定设备路径。不要把当前属于 ESP32 的 `/dev/ttyUSB0` 填入该变量；无法确认设备身份时先停止探测并检查 `ls -l /dev/serial/by-id/`。
 
 在 64 位 Raspberry Pi OS 上，`hardware` extra 会同时安装 Pi 5 所需的
 `lgpio` 后端。安装后可先运行 `python -c "import board, lgpio"`，确认
@@ -147,7 +150,7 @@ Blinka 与 GPIO 后端均可导入，再探测真实传感器。
 
 仓库提供最小 ESP32 串口烟雾固件，用于确认树莓派能够识别、编译、烧录和读取开发板。固件不采集传感器数据，也不连接网络。操作命令和成功输出见 [`firmware/README.md`](firmware/README.md)。
 
-烧录前必须读取芯片型号，并核对 `/dev/serial/by-id/`。`/dev/ttyUSB0` 只是动态设备名，不代表它一定是 LD2450。ESP32 与 LD2450 同时接入时应使用两个独立串口，并在真实配置中填写雷达对应的稳定设备路径。
+烧录前必须读取芯片型号，并核对 `/dev/serial/by-id/`。`/dev/ttyUSB0` 只是动态设备名，不代表它一定是 LD2450。ESP32 与 LD2450 同时接入时应使用两个独立串口，并通过 `RADAR_PORT` 给出雷达对应的稳定设备路径。
 
 ## 离线采集
 
@@ -227,7 +230,7 @@ python -m compileall -q src scripts
 
 **LD2450 一直 offline**
 
-确认串口设备名、权限与 256000 baud。若设备出现在 `/dev/ttyACM0` 而非 `/dev/ttyUSB0`，修改配置。损坏或截断的数据包会被跳过，后续有效帧仍可重新同步。
+确认 `RADAR_PORT` 指向 LD2450 独立 USB-TTL 的稳定设备路径，并检查权限与 256000 baud。不要仅凭 `/dev/ttyUSB0` 这类动态名称识别设备。损坏或截断的数据包会被跳过，后续有效帧仍可重新同步。
 
 **声音驱动无法启动**
 

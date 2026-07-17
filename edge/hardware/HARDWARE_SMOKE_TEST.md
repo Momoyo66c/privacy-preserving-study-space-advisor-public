@@ -44,6 +44,7 @@ ESP32 的硬件地址没有写入本文件。`/dev/ttyUSB0` 当前属于 ESP32�
 ```bash
 cd edge/hardware
 source .venv/bin/activate
+export RADAR_PORT=/dev/serial/by-id/REPLACE_WITH_LD2450_USB_TTL_DEVICE
 python scripts/probe_sensors.py \
   --config config/real.example.yaml \
   | tee hardware-probe.json
@@ -62,6 +63,7 @@ python scripts/probe_sensors.py \
 在不记录姓名、学号或可识别备注的前提下执行：
 
 ```bash
+export RADAR_PORT=/dev/serial/by-id/REPLACE_WITH_LD2450_USB_TTL_DEVICE
 python scripts/collect_session.py \
   --config config/real.example.yaml \
   --room room_a \
