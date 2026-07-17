@@ -141,6 +141,7 @@ Raspberry Pi 间歇故障长测: 360 windows / 30:01.16 / exit 0
 延迟导入后 Pi 完整回归: 55 passed / 84.59% coverage
 延迟导入后实时对照: 24 windows / 2:00.17 / exit 0
 延迟导入后峰值 RSS: 24,544 KiB（降低约 42.3%）
+GitHub Module 1 CI: passed（55 tests / coverage gate / compile / wheel）
 ```
 
 离线会话交付模块 2 前运行：
