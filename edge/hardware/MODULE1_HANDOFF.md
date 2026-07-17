@@ -125,6 +125,10 @@ Raspberry Pi 会话验收针对性测试: 5 passed
 Raspberry Pi 会话验收后完整回归: 41 passed
 Raspberry Pi 模拟会话 CLI: valid PASS
 Raspberry Pi 禁用 WAV 篡改检测: invalid PASS
+Raspberry Pi 故障注入针对性测试: 14 passed
+Raspberry Pi 故障注入后完整回归: 49 passed
+Raspberry Pi 覆盖率门禁: 80.54%（要求 80%）
+Raspberry Pi LD2450 驱动覆盖率: 93%
 ```
 
 离线会话交付模块 2 前运行：
