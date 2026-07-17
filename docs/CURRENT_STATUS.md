@@ -1,6 +1,6 @@
 # 当前状态
 
-更新时间：2026-07-18 02:07 SGT
+更新时间：2026-07-18 02:10 SGT
 
 ## 当前结论
 
@@ -20,7 +20,7 @@
 | 许可证检查 | 已完成 | MIT 6 个、GPLv3 2 个、AGPLv3 1 个；主仓库缺少根许可证，采用保守复用边界 |
 | 三层项目骨架 | 已完成 | `edge/`、`backend/` + `shared/`、`frontend/` 及跨层测试入口均存在；根 README 已明确边界 |
 | 当前限定阶段终验 | 已完成 | 源码、用途、许可证和三层骨架均有独立记录；模块 01 测试 34 项通过 |
-| 模块 01 会话异常元数据 | 本地完成 | 新增可重复 `--known-anomaly` 和 `session.json.known_anomalies`；全套测试增至 35 项 |
+| 模块 01 会话异常元数据 | 已完成 | 新增可重复 `--known-anomaly` 和 `session.json.known_anomalies`；本机与 Raspberry Pi 全套测试均为 35 项 |
 
 ## 当前风险
 
@@ -42,7 +42,11 @@
 - 在 `edge/hardware/` 运行 `.venv/bin/python -m pytest tests/test_storage.py`：3 项通过。
 - 在 `edge/hardware/` 运行 `.venv/bin/python -m pytest`：35 项通过。
 - 在 `edge/hardware/` 运行 `.venv/bin/python -m compileall -q src scripts`：通过。
+- Raspberry Pi 增量部署前逐文件比较 SHA-256：4 个目标文件均与本次修改前版本一致，无现场漂移。
+- Raspberry Pi 运行 `.venv/bin/python -m pytest tests/test_storage.py`：3 项通过。
+- Raspberry Pi 运行 `.venv/bin/python -m pytest`：35 项通过。
+- Raspberry Pi 运行 `.venv/bin/python -m compileall -q src scripts`：通过。
 
 ## 下一步
 
-提交并推送会话已知异常元数据，然后在 Raspberry Pi 上拉取并执行同一组回归验证。
+提交并推送 Raspberry Pi 验证记录。没有新传感器时，模块 01 剩余工作仅为真实传感器 10 分钟采集、资源指标、重启检查和匿名真实样例。

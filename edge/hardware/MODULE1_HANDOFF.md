@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-模块 1 的软件实现已完成，并已部署到 Raspberry Pi 5。树莓派本机的 34 项测试、编译检查和两分钟实时模拟均通过。ESP32 烧录与串口心跳也已复验。
+模块 1 的软件实现已完成，并已部署到 Raspberry Pi 5。树莓派本机的 35 项测试、编译检查和两分钟实时模拟均通过。ESP32 烧录与串口心跳也已复验。
 
 MLX90640、LD2450、BH1750、AHTx0 和音频输入设备尚未接入。`HARDWARE_SMOKE_TEST.md` 中的十分钟真实采集指标仍待执行，仓库没有用模拟数据冒充真实采集样例。
 
@@ -13,6 +13,7 @@ MLX90640、LD2450、BH1750、AHTx0 和音频输入设备尚未接入。`HARDWARE
 - 与真实驱动共用数据模型的确定性模拟器。
 - 5–10 秒非重叠窗口、完整度计算、警告和窗口局部雷达 ID。
 - 本地 JSONL + NPZ 会话、SHA-256 校验和与会话数量保留策略。
+- 离线会话使用结构化 `known_anomalies` 数组记录不含个人身份的已知采集异常。
 - 日志、GPIO RGB LED 与 micro:bit 状态输出。
 - 共享 JSON Schema 和 5 个匿名夹具。
 - 单元测试与模拟集成测试。
@@ -102,6 +103,10 @@ ESP32: compile/upload/hash verification passed
 串口释放: 3 open/read/close cycles passed; no process retained the port
 真实配置探测: exit 0; missing sensors reported offline/degraded
 隐私文件: 0 WAV/PCM/MP3/FLAC files in deployment tree
+会话异常元数据提交: ad4aa44
+会话异常元数据针对性测试: 3 passed
+更新后完整回归: 35 passed in 0.77s
+更新后 compileall: passed
 ```
 
 详细证据和仍待完成的真实传感器步骤见 `HARDWARE_SMOKE_TEST.md`。ESP32 烧录命令见 `firmware/README.md`。
