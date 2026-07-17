@@ -108,6 +108,12 @@ ESP32: compile/upload/hash verification passed
 会话异常元数据针对性测试: 3 passed
 更新后完整回归: 35 passed in 0.77s
 更新后 compileall: passed
+雷达端口安全配置提交: 9e5919a
+缺少 RADAR_PORT: 按预期拒绝加载真实配置
+不存在的专用雷达端口: 安全报告未连接，probe exit 0
+雷达配置测试: 7 passed
+雷达配置后完整回归: 36 passed in 0.76s
+雷达配置后 compileall: passed
 ```
 
 详细证据和仍待完成的真实传感器步骤见 `HARDWARE_SMOKE_TEST.md`。ESP32 烧录命令见 `firmware/README.md`。

@@ -13,7 +13,7 @@
 | Raspberry Pi 型号 | Raspberry Pi 5，aarch64 |
 | Raspberry Pi OS 版本 | Debian Trixie，内核 `6.18.34+rpt-rpi-2712` |
 | Python 版本 | 3.13.5 |
-| Git commit | `b232ee1` |
+| Git commit | `9e5919a` |
 | 配置文件 | `config/example.yaml`、`config/real.example.yaml` |
 | 已连接硬件 | ESP32-D0WD-V3，通过 CH340 接入 `/dev/ttyUSB0` |
 | 未检测到的设备 | MLX90640、LD2450、BH1750、AHTx0、音频输入设备 |
@@ -24,7 +24,7 @@
 |---|---|
 | 树莓派部署 | 模块 1 已部署到 `/home/pi/privacy-study-space-advisor` |
 | Python 环境 | `.venv` 已安装 `dev` 与 `hardware` 依赖 |
-| 自动测试 | `34 passed in 0.88s` |
+| 自动测试 | `36 passed in 0.76s` |
 | Pi 5 GPIO 后端 | 安装 `swig` 与 `liblgpio-dev` 后，`board`/`lgpio` 导入通过 |
 | 两分钟实时模拟 | 24 个 5 秒窗口，耗时 2:00.20，退出码 0 |
 | 模拟峰值内存 | 25,040 KiB |
@@ -35,6 +35,7 @@
 | ESP32 串口 | 115200 baud 连续读取 5 条 `PSSA_ESP32_HEARTBEAT` |
 | ESP32 端口释放 | 连续 3 轮打开、读取和关闭，每轮收到 2 条心跳，结束后无进程占用串口 |
 | 真实配置降级 | 探测进程退出码 0；缺失设备返回 offline/degraded，未发生未处理异常 |
+| 雷达端口保护 | 未设置 `RADAR_PORT` 时拒绝加载；显式不存在端口时安全报告未连接，未访问 ESP32 串口 |
 | 隐私文件检查 | 部署目录内 WAV、PCM、MP3、FLAC 文件数量为 0 |
 
 ESP32 的硬件地址没有写入本文件。`/dev/ttyUSB0` 当前属于 ESP32，不能同时作为 `config/real.example.yaml` 中的 LD2450 端口。
