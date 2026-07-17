@@ -115,6 +115,9 @@ ESP32: compile/upload/hash verification passed
 雷达配置后完整回归: 36 passed in 0.76s
 雷达配置后 compileall: passed
 本机模块目录与仓库根目录测试: 均为 36 passed
+Raspberry Pi 模块目录测试: 36 passed in 0.80s
+Raspberry Pi 部署根目录测试: 36 passed
+Raspberry Pi 部署根目录 compileall: passed
 ```
 
 详细证据和仍待完成的真实传感器步骤见 `HARDWARE_SMOKE_TEST.md`。ESP32 烧录命令见 `firmware/README.md`。
