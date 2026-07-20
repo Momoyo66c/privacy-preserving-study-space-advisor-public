@@ -79,11 +79,12 @@ def test_firmware_matches_identified_sensor_models_and_pins() -> None:
     assert "ESP_I2S" not in source
 
 
-def test_quiet_hw485_windows_are_valid_unless_adc_is_rail_saturated() -> None:
+def test_quiet_hw485_zero_baseline_is_a_valid_sample() -> None:
     source = (FIRMWARE_ROOT / "esp32_sensor_hub.ino").read_text()
     config = (FIRMWARE_ROOT / "sensor_hub_config.h").read_text()
 
     assert "maximum - minimum <= 4" not in source
-    assert "mean_raw <= pssa_config::kSoundRailGuardCounts" in source
-    assert "kAdcMaximum - pssa_config::kSoundRailGuardCounts" in source
-    assert "kSoundRailGuardCounts = 8" in config
+    assert "kSoundRailGuardCounts" not in source
+    assert "kSoundRailGuardCounts" not in config
+    assert "const double mean_raw" in source
+    assert "writeFloatLe(payload, rms)" in source

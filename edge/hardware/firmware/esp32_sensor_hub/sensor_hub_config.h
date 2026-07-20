@@ -20,9 +20,6 @@ constexpr int kLightAdcPin = 35;
 constexpr uint16_t kAdcMaximum = 4095;
 constexpr uint16_t kAudioChunkFrames = 400;
 constexpr uint32_t kAudioSampleIntervalUs = 250;
-// A quiet microphone may have almost no short-window variation.  Only reject
-// a mean pinned close to an ADC rail, which indicates an unusable signal.
-constexpr uint16_t kSoundRailGuardCounts = 8;
 constexpr uint8_t kLightOversampleCount = 16;
 
 constexpr bool kEnableThermal = true;

@@ -391,13 +391,6 @@ void serviceSound(uint32_t now) {
   }
 
   const double mean_raw = sum / pssa_config::kAudioChunkFrames;
-  if (mean_raw <= pssa_config::kSoundRailGuardCounts ||
-      mean_raw >=
-          pssa_config::kAdcMaximum - pssa_config::kSoundRailGuardCounts) {
-    recordFailure(sound_state, ErrorCode::kInvalidValue);
-    return;
-  }
-
   double centered_squares = 0.0;
   double peak = 0.0;
   for (uint16_t index = 0; index < pssa_config::kAudioChunkFrames; ++index) {
