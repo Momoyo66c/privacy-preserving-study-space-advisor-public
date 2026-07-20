@@ -1,0 +1,26 @@
+schema_version: "1.0"
+feature_schema_version: "1.0"
+feature_order:
+  - thermal_frame_count
+  - radar_sample_count
+  - radar_active_target_count
+  - radar_mean_target_count
+  - sound_rms_mean
+  - sound_rms_std
+  - sound_peak
+  - light_lux
+  - temperature_c
+  - humidity_pct
+  - completeness
+  - thermal_missing
+  - radar_missing
+  - sound_missing
+  - environment_missing
+output_feature_summary:
+  - thermal_hot_region_count
+  - radar_active_target_count
+  - sound_rms_mean
+  - light_lux
+  - temperature_c
+  - humidity_pct
+missing_value_policy: "Keep contract summary values as null; use conservative fallbacks only inside rule logic."

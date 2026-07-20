@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "feature_schema_version": "1.0",
+  "feature_order": [
+    "thermal_frame_count",
+    "radar_sample_count",
+    "radar_active_target_count",
+    "radar_mean_target_count",
+    "sound_rms_mean",
+    "sound_rms_std",
+    "sound_peak",
+    "light_lux",
+    "temperature_c",
+    "humidity_pct",
+    "completeness",
+    "thermal_missing",
+    "radar_missing",
+    "sound_missing",
+    "environment_missing"
+  ],
+  "contract_summary_features": [
+    "thermal_hot_region_count",
+    "radar_active_target_count",
+    "sound_rms_mean",
+    "light_lux",
+    "temperature_c",
+    "humidity_pct"
+  ],
+  "missing_value_policy": "Contract output uses null for unavailable values. Rule logic uses conservative internal fallbacks and lowers confidence when key sensors are degraded."
+}
