@@ -20,6 +20,7 @@ def test_example_config_loads() -> None:
     assert config.window_seconds == 5
     assert config.sensors["thermal"].sample_rate_hz == 2
     assert config.actuation.buzzer_enabled is False
+    assert config.transport.mode == "direct"
 
 
 def test_real_example_config_loads_with_explicit_radar_port(
@@ -56,6 +57,64 @@ def test_environment_variable_expansion(monkeypatch: pytest.MonkeyPatch) -> None
         }
     )
     assert config.sensors["radar"].options["port"] == "/dev/test-radar"
+
+
+def test_esp32_hub_transport_requires_a_port() -> None:
+    with pytest.raises(ValueError, match="transport.port is required"):
+        config_from_dict(
+            {
+                "room_id": "room_a",
+                "device_id": "pi5-a",
+                "transport": {"mode": "esp32_hub"},
+            }
+        )
+
+
+def test_esp32_hub_transport_loads_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ESP32_HUB_PORT", "/dev/serial/by-id/esp32-test")
+    config = config_from_dict(
+        {
+            "room_id": "room_a",
+            "device_id": "pi5-a",
+            "transport": {
+                "mode": "esp32_hub",
+                "port": "${ESP32_HUB_PORT}",
+                "baud_rate": 460800,
+            },
+        }
+    )
+    assert config.transport.port == "/dev/serial/by-id/esp32-test"
+    assert config.transport.baud_rate == 460800
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("mode", "unknown", "transport.mode"),
+        ("baud_rate", 0, "baud_rate"),
+        ("read_timeout_s", 0, "read_timeout_s"),
+        ("reconnect_delay_s", -1, "reconnect_delay_s"),
+        ("startup_timeout_s", 0, "startup_timeout_s"),
+        ("sample_timeout_s", 0, "sample_timeout_s"),
+        ("queue_size", 0, "queue_size"),
+    ],
+)
+def test_transport_limits_are_validated(
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    transport = {field: value}
+    with pytest.raises(ValueError, match=message):
+        config_from_dict(
+            {
+                "room_id": "room_a",
+                "device_id": "pi5-a",
+                "transport": transport,
+            }
+        )
 
 
 def test_window_duration_is_constrained() -> None:
