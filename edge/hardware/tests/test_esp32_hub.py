@@ -129,6 +129,15 @@ def _radar_payload() -> bytes:
     return REPORT_HEADER + target + (b"\x00" * 16) + REPORT_TAIL
 
 
+def _light_payload(
+    adc_raw: int = 2048,
+    normalized: float = 0.5,
+    calibrated_lux: float = 0.0,
+    flags: int = 0,
+) -> bytes:
+    return struct.pack("<HffB", adc_raw, normalized, calibrated_lux, flags)
+
+
 def test_hub_thermal_driver_preserves_existing_sample_shape() -> None:
     hub = StubHub([_received(MessageType.THERMAL, _thermal_payload())])
     driver = Esp32HubThermalDriver(
@@ -213,7 +222,7 @@ def test_hub_radar_driver_rejects_invalid_reports(payload: bytes) -> None:
 
 
 def test_hub_sound_driver_never_exposes_raw_audio() -> None:
-    payload = struct.pack("<fffH", 0.2, 0.05, 0.4, 800)
+    payload = struct.pack("<fffH", 0.2, 0.05, 0.4, 400)
     hub = StubHub([_received(MessageType.SOUND, payload)])
     driver = Esp32HubSoundDriver(
         hub=hub,  # type: ignore[arg-type]
@@ -224,7 +233,7 @@ def test_hub_sound_driver_never_exposes_raw_audio() -> None:
     sample = driver.read()
 
     assert sample.values["raw_audio_persisted"] is False
-    assert sample.values["chunk_frames"] == 800
+    assert sample.values["chunk_frames"] == 400
     assert set(sample.values) == {
         "rms",
         "std",
@@ -233,6 +242,7 @@ def test_hub_sound_driver_never_exposes_raw_audio() -> None:
         "chunk_frames",
     }
     assert driver.raw_audio_persisted is False
+    assert sample.source == "esp32-hub:hw485-relative-sound"
 
 
 @pytest.mark.parametrize(
@@ -241,6 +251,7 @@ def test_hub_sound_driver_never_exposes_raw_audio() -> None:
         b"short",
         struct.pack("<fffH", math.nan, 0.1, 0.2, 800),
         struct.pack("<fffH", -0.1, 0.1, 0.2, 800),
+        struct.pack("<fffH", 1.1, 0.1, 0.2, 800),
         struct.pack("<fffH", 0.1, 0.1, 0.2, 0),
     ],
 )
@@ -257,9 +268,7 @@ def test_hub_sound_driver_rejects_invalid_statistics(payload: bytes) -> None:
 
 
 def test_hub_environment_drivers_preserve_units_and_sources() -> None:
-    light_hub = StubHub(
-        [_received(MessageType.LIGHT, struct.pack("<f", 420.5))]
-    )
+    light_hub = StubHub([_received(MessageType.LIGHT, _light_payload())])
     light = Esp32HubLightDriver(
         hub=light_hub,  # type: ignore[arg-type]
         max_retries=0,
@@ -279,17 +288,53 @@ def test_hub_environment_drivers_preserve_units_and_sources() -> None:
     climate.start()
     climate_sample = climate.read()
 
-    assert light_sample.values["light_lux"] == pytest.approx(420.5)
+    assert light_sample.values["light_adc_raw"] == 2048
+    assert light_sample.values["light_normalized"] == pytest.approx(0.5)
+    assert light_sample.values["light_lux"] is None
+    assert light_sample.values["calibrated_lux"] is False
+    assert light_sample.values["warning"] == "hw486_uncalibrated_light_proxy"
     assert light_sample.units["light_lux"] == "lux"
+    assert light_sample.source == "esp32-hub:hw486-ldr-proxy"
     assert climate_sample.values["temperature_c"] == pytest.approx(24.5)
     assert climate_sample.values["humidity_pct"] == pytest.approx(61.0)
     assert climate_sample.units["humidity_pct"] == "percent_relative_humidity"
+    assert climate_sample.values["measurement_source"] == "dht11"
+    assert climate_sample.source == "esp32-hub:dht11"
+
+
+def test_hub_light_driver_accepts_explicit_calibration_flag() -> None:
+    hub = StubHub(
+        [_received(MessageType.LIGHT, _light_payload(3000, 0.75, 420.5, 1))]
+    )
+    driver = Esp32HubLightDriver(
+        hub=hub,  # type: ignore[arg-type]
+        max_retries=0,
+        clock=ManualClock(),
+    )
+    driver.start()
+    sample = driver.read()
+
+    assert sample.values["light_lux"] == pytest.approx(420.5)
+    assert sample.values["calibrated_lux"] is True
+    assert "warning" not in sample.values
 
 
 @pytest.mark.parametrize(
     ("driver_type", "message_type", "payload"),
     [
-        (Esp32HubLightDriver, MessageType.LIGHT, struct.pack("<f", -1.0)),
+        (Esp32HubLightDriver, MessageType.LIGHT, _light_payload(4096)),
+        (
+            Esp32HubLightDriver,
+            MessageType.LIGHT,
+            _light_payload(2000, math.nan),
+        ),
+        (Esp32HubLightDriver, MessageType.LIGHT, _light_payload(2000, 1.1)),
+        (Esp32HubLightDriver, MessageType.LIGHT, _light_payload(flags=2)),
+        (
+            Esp32HubLightDriver,
+            MessageType.LIGHT,
+            _light_payload(calibrated_lux=-1.0, flags=1),
+        ),
         (Esp32HubLightDriver, MessageType.LIGHT, b"short"),
         (
             Esp32HubClimateDriver,
@@ -724,9 +769,9 @@ def test_hub_adapters_emit_unchanged_complete_window() -> None:
             MessageType.SOUND,
             4,
             130,
-            struct.pack("<fffH", 0.2, 0.05, 0.4, 800),
+            struct.pack("<fffH", 0.2, 0.05, 0.4, 400),
         ),
-        ProtocolFrame(MessageType.LIGHT, 5, 140, struct.pack("<f", 420.5)),
+        ProtocolFrame(MessageType.LIGHT, 5, 140, _light_payload()),
         ProtocolFrame(
             MessageType.CLIMATE,
             6,
@@ -747,11 +792,14 @@ def test_hub_adapters_emit_unchanged_complete_window() -> None:
     assert window.payload["radar"]["sample_count"] == 1
     assert window.payload["sound"]["rms_mean"] == pytest.approx(0.2)
     assert window.payload["environment"] == {
-        "light_lux": pytest.approx(420.5),
+        "light_lux": None,
         "temperature_c": pytest.approx(24.5),
         "humidity_pct": pytest.approx(61.0),
     }
-    assert window.payload["quality"] == {"completeness": 1.0, "warnings": []}
+    assert window.payload["quality"] == {
+        "completeness": 1.0,
+        "warnings": ["hw486_uncalibrated_light_proxy"],
+    }
     assert len(window.thermal_frames) == 1
     assert "raw_audio" not in str(window.payload).lower()
 

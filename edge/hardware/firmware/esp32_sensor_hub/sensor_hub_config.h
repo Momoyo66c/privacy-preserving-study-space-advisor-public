@@ -14,26 +14,28 @@ constexpr int kRadarRxPin = 16;
 constexpr int kRadarTxPin = 17;
 constexpr uint32_t kRadarBaudRate = 256000;
 
-constexpr int kI2sBclkPin = 26;
-constexpr int kI2sWsPin = 25;
-constexpr int kI2sDataInPin = 33;
-constexpr uint32_t kAudioSampleRateHz = 8000;
-constexpr uint16_t kAudioChunkFrames = 800;
+constexpr int kDht11DataPin = 27;
+constexpr int kSoundAdcPin = 34;
+constexpr int kLightAdcPin = 35;
+constexpr uint16_t kAdcMaximum = 4095;
+constexpr uint16_t kAudioChunkFrames = 400;
+constexpr uint32_t kAudioSampleIntervalUs = 250;
+constexpr uint8_t kLightOversampleCount = 16;
 
 constexpr bool kEnableThermal = true;
-constexpr bool kEnableRadar = true;
+// Keep disabled until the LD2450 arrives and is physically connected.
+constexpr bool kEnableRadar = false;
 constexpr bool kEnableLight = true;
 constexpr bool kEnableClimate = true;
-
-// Keep disabled until an I2S microphone is physically connected. A classic
-// ESP32-D0WD-V3 cannot host the existing USB microphone directly.
-constexpr bool kEnableI2sSound = false;
+constexpr bool kEnableAnalogSound = true;
 
 constexpr uint32_t kHostSerialBaudRate = 460800;
 constexpr uint32_t kHeartbeatIntervalMs = 1000;
 constexpr uint32_t kThermalIntervalMs = 500;
 constexpr uint32_t kSoundIntervalMs = 250;
-constexpr uint32_t kEnvironmentIntervalMs = 1000;
+constexpr uint32_t kLightIntervalMs = 1000;
+// DHT11 requires at least about two seconds between real reads.
+constexpr uint32_t kClimateIntervalMs = 2000;
 constexpr uint32_t kInitializationRetryIntervalMs = 5000;
 constexpr uint32_t kRadarOfflineAfterMs = 3000;
 constexpr uint8_t kOfflineFailureThreshold = 3;

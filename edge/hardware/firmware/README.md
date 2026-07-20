@@ -4,7 +4,7 @@
 
 ## Sensor Hub
 
-`esp32_sensor_hub/` 将 MLX90640、LD2450、BH1750、AHT20/AHT21 和可选 I2S 麦克风汇聚到 ESP32，再通过一条 USB 串口连接 Raspberry Pi。详细的接线、可复现构建和验证步骤见 [esp32_sensor_hub/README.md](esp32_sensor_hub/README.md)。二进制协议见 [../ESP32_HUB_PROTOCOL.md](../ESP32_HUB_PROTOCOL.md)。
+`esp32_sensor_hub/` 将 MLX90640、HW-507/DHT11、HW-485、HW-486 和以后可选的 LD2450 汇聚到 ESP32，再通过一条 USB 串口连接 Raspberry Pi。详细的接线、可复现构建和验证步骤见 [esp32_sensor_hub/README.md](esp32_sensor_hub/README.md)。二进制协议见 [../ESP32_HUB_PROTOCOL.md](../ESP32_HUB_PROTOCOL.md)。
 
 ## 串口烟雾测试固件
 

@@ -1,9 +1,8 @@
 #include <Arduino.h>
-#include <ESP_I2S.h>
 #include <Wire.h>
 
-#include <Adafruit_AHTX0.h>
 #include <Adafruit_MLX90640.h>
+#include <DHT.h>
 
 #include <math.h>
 #include <string.h>
@@ -15,10 +14,6 @@ namespace {
 
 using pssa::MessageType;
 
-constexpr uint8_t kBh1750Address = 0x23;
-constexpr uint8_t kBh1750PowerOn = 0x01;
-constexpr uint8_t kBh1750Reset = 0x07;
-constexpr uint8_t kBh1750ContinuousHighResolution = 0x10;
 constexpr uint8_t kRadarHeader[] = {0xAA, 0xFF, 0x03, 0x00};
 constexpr uint8_t kRadarTail[] = {0x55, 0xCC};
 constexpr size_t kRadarFrameBytes = 30;
@@ -62,8 +57,7 @@ SensorState climate_state{MessageType::kClimate, false,
                           HealthStatus::kOffline, ErrorCode::kDisabled, 0, 0};
 
 Adafruit_MLX90640 mlx90640;
-Adafruit_AHTX0 ahtx0;
-I2SClass i2s;
+DHT dht11(pssa_config::kDht11DataPin, DHT11);
 
 bool thermal_initialized = false;
 bool light_initialized = false;
@@ -72,7 +66,7 @@ bool sound_initialized = false;
 
 float thermal_frame[kThermalPixels];
 uint8_t thermal_payload[kThermalPayloadBytes];
-int32_t audio_samples[pssa_config::kAudioChunkFrames];
+uint16_t audio_samples[pssa_config::kAudioChunkFrames];
 uint8_t encoded_frame[pssa::kMaxEncodedFrameBytes];
 uint8_t radar_frame[kRadarFrameBytes];
 size_t radar_frame_length = 0;
@@ -83,7 +77,8 @@ uint32_t dropped_samples = 0;
 uint32_t last_heartbeat_ms = 0;
 uint32_t last_thermal_ms = 0;
 uint32_t last_sound_ms = 0;
-uint32_t last_environment_ms = 0;
+uint32_t last_light_ms = 0;
+uint32_t last_climate_ms = 0;
 uint32_t last_radar_frame_ms = 0;
 uint32_t last_initialization_retry_ms = 0;
 
@@ -197,12 +192,6 @@ bool i2cPresent(uint8_t address) {
   return Wire.endTransmission() == 0;
 }
 
-bool sendI2cCommand(uint8_t address, uint8_t command) {
-  Wire.beginTransmission(address);
-  Wire.write(command);
-  return Wire.endTransmission() == 0;
-}
-
 void initializeThermal() {
   if (!pssa_config::kEnableThermal) {
     updateState(thermal_state, false, HealthStatus::kOffline,
@@ -227,15 +216,11 @@ void initializeLight() {
                 ErrorCode::kDisabled, true);
     return;
   }
-  if (!i2cPresent(kBh1750Address) ||
-      !sendI2cCommand(kBh1750Address, kBh1750PowerOn) ||
-      !sendI2cCommand(kBh1750Address, kBh1750Reset) ||
-      !sendI2cCommand(kBh1750Address, kBh1750ContinuousHighResolution)) {
-    recordFailure(light_state, ErrorCode::kInitializationFailed);
-    return;
-  }
+  pinMode(pssa_config::kLightAdcPin, INPUT);
+  analogSetPinAttenuation(pssa_config::kLightAdcPin, ADC_11db);
   light_initialized = true;
-  recordSuccess(light_state);
+  updateState(light_state, false, HealthStatus::kDegraded,
+              ErrorCode::kAwaitingData, true);
 }
 
 void initializeClimate() {
@@ -244,27 +229,20 @@ void initializeClimate() {
                 ErrorCode::kDisabled, true);
     return;
   }
-  if (!i2cPresent(AHTX0_I2CADDR_DEFAULT) || !ahtx0.begin(&Wire)) {
-    recordFailure(climate_state, ErrorCode::kInitializationFailed);
-    return;
-  }
+  dht11.begin();
   climate_initialized = true;
-  recordSuccess(climate_state);
+  updateState(climate_state, false, HealthStatus::kDegraded,
+              ErrorCode::kAwaitingData, true);
 }
 
 void initializeSound() {
-  if (!pssa_config::kEnableI2sSound) {
+  if (!pssa_config::kEnableAnalogSound) {
     updateState(sound_state, false, HealthStatus::kOffline,
                 ErrorCode::kDisabled, true);
     return;
   }
-  i2s.setPins(pssa_config::kI2sBclkPin, pssa_config::kI2sWsPin, -1,
-              pssa_config::kI2sDataInPin);
-  if (!i2s.begin(I2S_MODE_STD, pssa_config::kAudioSampleRateHz,
-                 I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_MONO)) {
-    recordFailure(sound_state, ErrorCode::kInitializationFailed);
-    return;
-  }
+  pinMode(pssa_config::kSoundAdcPin, INPUT);
+  analogSetPinAttenuation(pssa_config::kSoundAdcPin, ADC_11db);
   sound_initialized = true;
   updateState(sound_state, false, HealthStatus::kDegraded,
               ErrorCode::kAwaitingData, true);
@@ -298,7 +276,7 @@ void retryFailedInitializations(uint32_t now) {
   if (pssa_config::kEnableClimate && !climate_initialized) {
     initializeClimate();
   }
-  if (pssa_config::kEnableI2sSound && !sound_initialized) {
+  if (pssa_config::kEnableAnalogSound && !sound_initialized) {
     initializeSound();
   }
 }
@@ -334,28 +312,30 @@ void serviceThermal(uint32_t now) {
   }
 }
 
-bool readBh1750(float& lux) {
-  const int received = Wire.requestFrom(static_cast<int>(kBh1750Address), 2);
-  if (received != 2 || Wire.available() < 2) {
-    return false;
-  }
-  const uint16_t raw =
-      (static_cast<uint16_t>(Wire.read()) << 8) | Wire.read();
-  lux = static_cast<float>(raw) / 1.2F;
-  return isfinite(lux) && lux >= 0.0F;
-}
-
 void serviceLight() {
   if (!light_initialized) {
     return;
   }
-  float lux = 0.0F;
-  if (!readBh1750(lux)) {
-    recordFailure(light_state, ErrorCode::kReadFailed);
+  uint32_t total = 0;
+  for (uint8_t index = 0; index < pssa_config::kLightOversampleCount;
+       ++index) {
+    total += static_cast<uint16_t>(analogRead(pssa_config::kLightAdcPin));
+    delayMicroseconds(200);
+  }
+  const uint16_t raw = static_cast<uint16_t>(
+      total / pssa_config::kLightOversampleCount);
+  if (raw > pssa_config::kAdcMaximum) {
+    recordFailure(light_state, ErrorCode::kInvalidValue);
     return;
   }
-  uint8_t payload[4];
-  writeFloatLe(payload, lux);
+  const float normalized =
+      static_cast<float>(raw) / pssa_config::kAdcMaximum;
+  uint8_t payload[11];
+  writeLe16(payload, raw);
+  writeFloatLe(payload + 2, normalized);
+  // Reserved calibrated-lux field.  It is ignored while flags bit 0 is zero.
+  writeFloatLe(payload + 6, 0.0F);
+  payload[10] = 0;
   if (sendPacket(MessageType::kLight, payload, sizeof(payload))) {
     recordSuccess(light_state);
   }
@@ -365,16 +345,10 @@ void serviceClimate() {
   if (!climate_initialized) {
     return;
   }
-  sensors_event_t humidity_event;
-  sensors_event_t temperature_event;
-  if (!ahtx0.getEvent(&humidity_event, &temperature_event)) {
-    recordFailure(climate_state, ErrorCode::kReadFailed);
-    return;
-  }
-  const float temperature = temperature_event.temperature;
-  const float humidity = humidity_event.relative_humidity;
-  if (!isfinite(temperature) || temperature < -40.0F ||
-      temperature > 125.0F || !isfinite(humidity) || humidity < 0.0F ||
+  const float humidity = dht11.readHumidity();
+  const float temperature = dht11.readTemperature();
+  if (!isfinite(temperature) || temperature < -20.0F ||
+      temperature > 80.0F || !isfinite(humidity) || humidity < 0.0F ||
       humidity > 100.0F) {
     recordFailure(climate_state, ErrorCode::kInvalidValue);
     return;
@@ -388,13 +362,16 @@ void serviceClimate() {
 }
 
 void serviceEnvironment(uint32_t now) {
-  if (static_cast<uint32_t>(now - last_environment_ms) <
-      pssa_config::kEnvironmentIntervalMs) {
-    return;
+  if (static_cast<uint32_t>(now - last_light_ms) >=
+      pssa_config::kLightIntervalMs) {
+    last_light_ms = now;
+    serviceLight();
   }
-  last_environment_ms = now;
-  serviceLight();
-  serviceClimate();
+  if (static_cast<uint32_t>(now - last_climate_ms) >=
+      pssa_config::kClimateIntervalMs) {
+    last_climate_ms = now;
+    serviceClimate();
+  }
 }
 
 void serviceSound(uint32_t now) {
@@ -404,29 +381,21 @@ void serviceSound(uint32_t now) {
     return;
   }
   last_sound_ms = now;
-  const size_t expected_bytes = sizeof(audio_samples);
-  const size_t read_bytes =
-      i2s.readBytes(reinterpret_cast<char*>(audio_samples), expected_bytes);
-  if (read_bytes != expected_bytes) {
-    recordFailure(sound_state, ErrorCode::kReadFailed);
-    return;
-  }
-
   double sum = 0.0;
-  double sum_squares = 0.0;
-  int32_t minimum = INT32_MAX;
-  int32_t maximum = INT32_MIN;
+  uint16_t minimum = pssa_config::kAdcMaximum;
+  uint16_t maximum = 0;
   for (uint16_t index = 0; index < pssa_config::kAudioChunkFrames; ++index) {
-    const int32_t raw = audio_samples[index];
+    const uint16_t raw =
+        static_cast<uint16_t>(analogRead(pssa_config::kSoundAdcPin));
+    audio_samples[index] = raw;
     sum += raw;
-    const double normalized = static_cast<double>(raw) / 2147483648.0;
-    sum_squares += normalized * normalized;
     if (raw < minimum) {
       minimum = raw;
     }
     if (raw > maximum) {
       maximum = raw;
     }
+    delayMicroseconds(pssa_config::kAudioSampleIntervalUs);
   }
   if (maximum - minimum <= 4) {
     recordFailure(sound_state, ErrorCode::kInvalidValue);
@@ -437,20 +406,18 @@ void serviceSound(uint32_t now) {
   double centered_squares = 0.0;
   double peak = 0.0;
   for (uint16_t index = 0; index < pssa_config::kAudioChunkFrames; ++index) {
-    const double normalized =
-        static_cast<double>(audio_samples[index]) / 2147483648.0;
     const double centered =
-        (static_cast<double>(audio_samples[index]) - mean_raw) / 2147483648.0;
+        (static_cast<double>(audio_samples[index]) - mean_raw) /
+        pssa_config::kAdcMaximum;
     centered_squares += centered * centered;
-    const double magnitude = fabs(normalized);
+    const double magnitude = fabs(centered);
     if (magnitude > peak) {
       peak = magnitude;
     }
   }
-  const float rms = static_cast<float>(
-      sqrt(sum_squares / pssa_config::kAudioChunkFrames));
   const float standard_deviation = static_cast<float>(
       sqrt(centered_squares / pssa_config::kAudioChunkFrames));
+  const float rms = standard_deviation;
   const float peak_value = static_cast<float>(peak);
   if (!isfinite(rms) || !isfinite(standard_deviation) ||
       !isfinite(peak_value)) {
@@ -548,7 +515,8 @@ void setup() {
   last_heartbeat_ms = now;
   last_thermal_ms = now;
   last_sound_ms = now;
-  last_environment_ms = now;
+  last_light_ms = now;
+  last_climate_ms = now;
   last_initialization_retry_ms = now;
   sendHeartbeat();
 }

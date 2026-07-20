@@ -38,8 +38,10 @@ from ..models import (
 _HEARTBEAT_PAYLOAD = struct.Struct("<II")
 _HEALTH_PAYLOAD = struct.Struct("<BBHI")
 _SOUND_PAYLOAD = struct.Struct("<fffH")
-_LIGHT_PAYLOAD = struct.Struct("<f")
+_LIGHT_PAYLOAD = struct.Struct("<HffB")
 _CLIMATE_PAYLOAD = struct.Struct("<ff")
+_LIGHT_FLAG_CALIBRATED_LUX = 1 << 0
+_LIGHT_KNOWN_FLAGS = _LIGHT_FLAG_CALIBRATED_LUX
 
 _CAPABILITY_BITS = {
     int(MessageType.THERMAL): 1 << 0,
@@ -674,8 +676,10 @@ class Esp32HubSoundDriver(Esp32HubSensorDriver):
             )
         rms, std, peak, chunk_frames = _SOUND_PAYLOAD.unpack(payload)
         values = (rms, std, peak)
-        if not all(math.isfinite(value) and value >= 0 for value in values):
-            raise SensorValidationError("sound statistics must be finite and non-negative")
+        if not all(math.isfinite(value) and 0 <= value <= 1 for value in values):
+            raise SensorValidationError(
+                "sound statistics must be finite normalized values"
+            )
         if chunk_frames < 1:
             raise SensorValidationError("sound chunk_frames must be positive")
         return SensorSample(
@@ -691,7 +695,7 @@ class Esp32HubSoundDriver(Esp32HubSensorDriver):
             },
             units={"rms": "normalized", "std": "normalized", "peak": "normalized"},
             quality=SampleQuality.VALID,
-            source="esp32-hub:i2s-sound-intensity",
+            source="esp32-hub:hw485-relative-sound",
         )
 
 
@@ -725,17 +729,46 @@ class Esp32HubLightDriver(Esp32HubSensorDriver):
             raise SensorValidationError(
                 f"expected {_LIGHT_PAYLOAD.size} light bytes, got {len(payload)}"
             )
-        (lux,) = _LIGHT_PAYLOAD.unpack(payload)
-        if not math.isfinite(lux) or lux < 0:
-            raise SensorValidationError(f"invalid light level: {lux}")
+        adc_raw, normalized, calibrated_lux, flags = _LIGHT_PAYLOAD.unpack(
+            payload
+        )
+        if adc_raw > 4095:
+            raise SensorValidationError(f"invalid HW-486 ADC value: {adc_raw}")
+        if not math.isfinite(normalized) or not 0 <= normalized <= 1:
+            raise SensorValidationError(
+                f"invalid HW-486 normalized value: {normalized}"
+            )
+        if flags & ~_LIGHT_KNOWN_FLAGS:
+            raise SensorValidationError(f"unknown HW-486 light flags: {flags}")
+        is_calibrated = bool(flags & _LIGHT_FLAG_CALIBRATED_LUX)
+        if is_calibrated and (
+            not math.isfinite(calibrated_lux) or calibrated_lux < 0
+        ):
+            raise SensorValidationError(
+                f"invalid calibrated light level: {calibrated_lux}"
+            )
+        light_lux = float(calibrated_lux) if is_calibrated else None
+        values: dict[str, Any] = {
+            "light_adc_raw": adc_raw,
+            "light_normalized": float(normalized),
+            "light_lux": light_lux,
+            "measurement_source": "hw486_ldr_proxy",
+            "calibrated_lux": is_calibrated,
+        }
+        if not is_calibrated:
+            values["warning"] = "hw486_uncalibrated_light_proxy"
         return SensorSample(
             sensor=self.name,
             captured_at=received.received_at,
             monotonic_s=received.received_monotonic_s,
-            values={"light_lux": float(lux), "measurement_source": "bh1750"},
-            units={"light_lux": "lux"},
+            values=values,
+            units={
+                "light_adc_raw": "adc_count",
+                "light_normalized": "relative",
+                "light_lux": "lux",
+            },
             quality=SampleQuality.VALID,
-            source="esp32-hub:bh1750",
+            source="esp32-hub:hw486-ldr-proxy",
         )
 
 
@@ -785,12 +818,12 @@ class Esp32HubClimateDriver(Esp32HubSensorDriver):
             values={
                 "temperature_c": float(temperature_c),
                 "humidity_pct": float(humidity_pct),
-                "measurement_source": "ahtx0",
+                "measurement_source": "dht11",
             },
             units={
                 "temperature_c": "celsius",
                 "humidity_pct": "percent_relative_humidity",
             },
             quality=SampleQuality.VALID,
-            source="esp32-hub:ahtx0",
+            source="esp32-hub:dht11",
         )

@@ -66,7 +66,7 @@ def test_cobs_rejects_invalid_frames() -> None:
 def test_protocol_golden_heartbeat_vector() -> None:
     encoded = encode_frame(_frame())
     assert encoded.hex() == (
-        "0850535341010101010103e803010208021f01010101010105ff9f77d300"
+        "0850535341020101010103e803010208021f0101010101010535d2de7c00"
     )
 
     decoded = decode_frame(encoded[:-1])
@@ -87,7 +87,7 @@ def test_checksum_corruption_is_rejected() -> None:
 
 def test_wrong_version_is_rejected() -> None:
     encoded = bytearray(cobs_decode(encode_frame(_frame())[:-1]))
-    encoded[4] = 2
+    encoded[4] = 3
     with pytest.raises(UnsupportedVersionError):
         decode_frame(cobs_encode(bytes(encoded)))
 

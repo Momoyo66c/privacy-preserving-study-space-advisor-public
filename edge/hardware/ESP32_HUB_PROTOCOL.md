@@ -17,7 +17,7 @@
 | 偏移 | 长度 | 字段 | 约束 |
 |---:|---:|---|---|
 | 0 | 4 | `magic` | ASCII `PSSA` |
-| 4 | 1 | `version` | 当前固定为 `1` |
+| 4 | 1 | `version` | 当前固定为 `2`；版本 1 的光照负载不兼容 |
 | 5 | 1 | `message_type` | 见消息类型表 |
 | 6 | 4 | `sequence` | 全局无符号 32 位序号，允许自然回绕 |
 | 10 | 4 | `device_uptime_ms` | ESP32 启动后的无符号毫秒数 |
@@ -36,7 +36,7 @@
 | `0x10` | `THERMAL` | `uint8 width`、`uint8 height`、随后为 `width*height` 个 `int16` 摄氏度百分值 |
 | `0x11` | `RADAR` | 一份完整的 30 字节 LD2450 上报帧 |
 | `0x12` | `SOUND` | `float32 rms`、`float32 std`、`float32 peak`、`uint16 chunk_frames` |
-| `0x13` | `LIGHT` | `float32 light_lux` |
+| `0x13` | `LIGHT` | `uint16 adc_raw`、`float32 normalized`、`float32 calibrated_lux`、`uint8 flags` |
 | `0x14` | `CLIMATE` | `float32 temperature_c`、`float32 humidity_pct` |
 
 `capability_mask` 从最低位开始依次表示 thermal、radar、sound、light 和 climate。能力位只说明该传感器已成功初始化，不得把缺失设备标记为可用。
@@ -53,7 +53,15 @@ ESP32 只对 LD2450 的 30 字节上报帧做边界检查，不改变字段，�
 
 ### 声音
 
-ESP32 只能发送 RMS、标准差、峰值和样本数。协议没有原始 PCM 或波形消息类型。固件不得把原始声音写入 Flash、串口日志或文件。
+当前声音源是 HW-485 的分压后模拟输出。ESP32 去除 ADC 直流分量，只发送归一化 RMS、标准差、峰值和样本数；这些数值是相对声音活动强度，不是未经校准的 dB。协议没有原始 ADC、PCM 或波形消息类型。固件不得把原始声音写入 Flash、串口日志或文件。
+
+### 光照代理值
+
+当前光照源是 HW-486 LDR 模块，不是数字照度计。`adc_raw` 范围为 0 至 4095，`normalized` 范围为 0 至 1。`flags` bit 0 表示 `calibrated_lux` 是否有效；其余位必须为 0。未用参考照度计标定时，固件必须清除 bit 0，Pi 必须输出 `light_lux=null`、`calibrated_lux=false` 和 `hw486_uncalibrated_light_proxy`，不得把 ADC 值冒充 lux。
+
+### 温湿度
+
+当前温湿度源是 HW-507 模块上的 DHT11，至少间隔约 2 秒读取。`CLIMATE` 的两个浮点字段保持不变，Pi 端测量源标记为 `dht11`。
 
 ## 时间和序号
 
@@ -76,7 +84,7 @@ payload          = 1f00000000000000
 包含结尾分隔符的完整编码十六进制：
 
 ```text
-0850535341010101010103e803010208021f01010101010105ff9f77d300
+0850535341020101010103e803010208021f0101010101010535d2de7c00
 ```
 
 ## 接收端失败处理

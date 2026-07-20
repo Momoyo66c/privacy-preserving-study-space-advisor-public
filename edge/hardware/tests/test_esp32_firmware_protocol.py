@@ -58,3 +58,22 @@ def test_firmware_retries_sensors_missing_at_boot() -> None:
     assert "!climate_initialized" in source
     assert "!sound_initialized" in source
     assert "kInitializationRetryIntervalMs = 5000" in config
+
+
+def test_firmware_matches_identified_sensor_models_and_pins() -> None:
+    source = (FIRMWARE_ROOT / "esp32_sensor_hub.ino").read_text()
+    config = (FIRMWARE_ROOT / "sensor_hub_config.h").read_text()
+    profile = (FIRMWARE_ROOT / "sketch.yaml").read_text()
+
+    assert "DHT dht11" in source
+    assert "analogRead(pssa_config::kSoundAdcPin)" in source
+    assert "analogRead(pssa_config::kLightAdcPin)" in source
+    assert "kDht11DataPin = 27" in config
+    assert "kSoundAdcPin = 34" in config
+    assert "kLightAdcPin = 35" in config
+    assert "kI2cSdaPin = 21" in config
+    assert "kI2cSclPin = 22" in config
+    assert "kClimateIntervalMs = 2000" in config
+    assert "DHT sensor library (1.4.6)" in profile
+    assert "Adafruit AHTX0" not in profile
+    assert "ESP_I2S" not in source

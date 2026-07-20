@@ -20,7 +20,11 @@ from .models import (
 
 
 def _mean(samples: list[SensorSample], field: str) -> float | None:
-    values = [float(sample.values[field]) for sample in samples if field in sample.values]
+    values = [
+        float(sample.values[field])
+        for sample in samples
+        if field in sample.values and sample.values[field] is not None
+    ]
     return statistics.fmean(values) if values else None
 
 
@@ -120,6 +124,11 @@ class WindowAccumulator:
             min(1.0, valid_total / expected_total) if expected_total else 1.0
         )
         warnings: list[str] = []
+        warnings.extend(
+            warning
+            for sample in light_samples
+            if isinstance((warning := sample.values.get("warning")), str)
+        )
         for name, expected in self.expected_counts.items():
             actual = len(self.samples[name])
             if actual < expected:

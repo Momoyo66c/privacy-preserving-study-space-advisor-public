@@ -27,7 +27,8 @@ sensors:
       minimum_c: -40
       maximum_c: 300
   radar:
-    enabled: true
+    # Enable after the LD2450 arrives and GPIO16/17 wiring is verified.
+    enabled: false
     sample_rate_hz: 10
     max_retries: 1
     offline_threshold: 3
@@ -43,7 +44,8 @@ sensors:
     offline_threshold: 3
   climate:
     enabled: true
-    sample_rate_hz: 1
+    # DHT11 must not be read more often than about once every two seconds.
+    sample_rate_hz: 0.5
     max_retries: 1
     offline_threshold: 3
 

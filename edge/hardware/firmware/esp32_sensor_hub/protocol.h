@@ -5,7 +5,7 @@
 
 namespace pssa {
 
-constexpr uint8_t kProtocolVersion = 1;
+constexpr uint8_t kProtocolVersion = 2;
 constexpr size_t kMaxPayloadBytes = 2048;
 constexpr size_t kHeaderBytes = 16;
 constexpr size_t kCrcBytes = 4;
