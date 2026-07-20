@@ -12,6 +12,7 @@ from study_space_hardware.config import config_from_dict, load_config
 PROJECT_ROOT = Path(__file__).parents[1]
 EXAMPLE_CONFIG = PROJECT_ROOT / "config/example.yaml"
 REAL_CONFIG = PROJECT_ROOT / "config/real.example.yaml"
+ESP32_HUB_CONFIG = PROJECT_ROOT / "config/esp32-hub.example.yaml"
 
 
 def test_example_config_loads() -> None:
@@ -41,6 +42,21 @@ def test_real_example_config_rejects_missing_radar_port(
     monkeypatch.delenv("RADAR_PORT", raising=False)
     with pytest.raises(ValueError, match="missing environment variable: RADAR_PORT"):
         load_config(REAL_CONFIG)
+
+
+def test_esp32_hub_example_uses_one_explicit_serial_port(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "ESP32_HUB_PORT",
+        "/dev/serial/by-id/usb-esp32-test",
+    )
+    config = load_config(ESP32_HUB_CONFIG)
+    assert config.simulator.enabled is False
+    assert config.transport.mode == "esp32_hub"
+    assert config.transport.port == "/dev/serial/by-id/usb-esp32-test"
+    assert config.transport.baud_rate == 460800
+    assert "port" not in config.sensors["radar"].options
 
 
 def test_environment_variable_expansion(monkeypatch: pytest.MonkeyPatch) -> None:

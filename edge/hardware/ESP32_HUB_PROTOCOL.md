@@ -41,6 +41,8 @@
 
 `capability_mask` 从最低位开始依次表示 thermal、radar、sound、light 和 climate。能力位只说明该传感器已成功初始化，不得把缺失设备标记为可用。
 
+`HEALTH.status` 固定为 `0=ok`、`1=degraded`、`2=offline`。`sensor_type` 使用对应的传感器消息类型值。主机收到 `offline` 或能力位撤销后必须清空该传感器的旧队列，避免把断开前的样本当成当前数据。
+
 ### 热阵列
 
 MLX90640 必须发送 `width=32`、`height=24` 和恰好 768 个温度值。每个值按摄氏温度乘以 100 后四舍五入为 `int16`。例如 `24.37°C` 编码为 `2437`。这种表示在传感器精度以内，同时将每个 2 Hz 热帧负载限制为 1538 字节。
@@ -93,4 +95,3 @@ payload          = 1f00000000000000
 
 - `src/study_space_hardware/esp32_protocol.py`
 - `tests/test_esp32_protocol.py`
-

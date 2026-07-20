@@ -138,6 +138,18 @@ def test_stream_recovers_after_checksum_and_oversize_frames() -> None:
     assert stats.invalid_frames == 2
 
 
+def test_stream_can_drop_a_partial_frame_without_resetting_counters() -> None:
+    stream = Esp32FrameStream()
+    assert stream.feed(encode_frame(_frame(sequence=1))) == [_frame(sequence=1)]
+    stream.feed(b"partial")
+    assert stream.buffered_bytes == 7
+
+    stream.reset_partial()
+
+    assert stream.buffered_bytes == 0
+    assert stream.stats().decoded_frames == 1
+
+
 def test_stream_handles_deterministic_random_chunking() -> None:
     rng = random.Random(3025)
     expected = [

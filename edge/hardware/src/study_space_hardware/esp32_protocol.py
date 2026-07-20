@@ -242,6 +242,12 @@ class Esp32FrameStream:
             buffered_bytes=self.buffered_bytes,
         )
 
+    def reset_partial(self) -> None:
+        """Discard only an incomplete frame after a transport reconnect."""
+
+        self._buffer.clear()
+        self._discarding_oversize = False
+
     def feed(self, chunk: bytes) -> list[ProtocolFrame]:
         frames: list[ProtocolFrame] = []
         for value in bytes(chunk):
