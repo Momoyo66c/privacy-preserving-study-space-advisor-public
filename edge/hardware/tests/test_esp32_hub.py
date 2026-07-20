@@ -27,6 +27,7 @@ from study_space_hardware.drivers.esp32_hub import (
 from study_space_hardware.drivers.ld2450 import REPORT_HEADER, REPORT_TAIL
 from study_space_hardware.esp32_protocol import MessageType, ProtocolFrame, encode_frame
 from study_space_hardware.models import THERMAL_PIXELS
+from study_space_hardware.orchestrator import SensorOrchestrator
 
 
 NOW = datetime(2026, 7, 20, 7, 0, tzinfo=timezone.utc)
@@ -438,6 +439,38 @@ def test_serial_hub_clears_stale_queue_when_sensor_goes_offline() -> None:
     hub.release("test")
 
 
+def test_serial_hub_clears_stale_queue_when_capability_is_removed() -> None:
+    serial_port = QueueSerial()
+    hub = Esp32SerialHub(
+        port="/dev/test-esp32",
+        startup_timeout_s=0.5,
+        serial_factory=lambda: serial_port,
+    )
+    hub.acquire("test")
+    frames = [
+        ProtocolFrame(
+            MessageType.HEARTBEAT,
+            1,
+            100,
+            struct.pack("<II", 1 << 3, 0),
+        ),
+        ProtocolFrame(
+            MessageType.LIGHT,
+            2,
+            110,
+            struct.pack("<f", 321.0),
+        ),
+        ProtocolFrame(MessageType.HEARTBEAT, 3, 120, struct.pack("<II", 0, 0)),
+    ]
+    serial_port.push(b"".join(encode_frame(frame) for frame in frames))
+    _wait_for(lambda: hub.diagnostics()["frames_received"] == 3)
+
+    with pytest.raises(SensorReadError, match="does not advertise"):
+        hub.read_frame(MessageType.LIGHT, timeout_s=0.5)
+    assert hub.diagnostics()["queue_drops"] == 1
+    hub.release("test")
+
+
 def test_serial_hub_reconnects_after_read_failure() -> None:
     first = QueueSerial()
     second = QueueSerial()
@@ -470,6 +503,257 @@ def test_serial_hub_reconnects_after_read_failure() -> None:
     assert hub.read_frame(MessageType.LIGHT, timeout_s=0.5).frame == light
     assert hub.diagnostics()["reconnects"] >= 1
     hub.release("test")
+
+
+def test_serial_hub_discards_stale_samples_on_disconnect() -> None:
+    first = QueueSerial()
+    second = QueueSerial()
+    serial_ports = deque([first, second])
+    factory_lock = threading.Lock()
+
+    def factory() -> QueueSerial:
+        with factory_lock:
+            if serial_ports:
+                return serial_ports.popleft()
+        return second
+
+    hub = Esp32SerialHub(
+        port="/dev/test-esp32",
+        startup_timeout_s=0.5,
+        reconnect_delay_s=0.01,
+        serial_factory=factory,
+    )
+    hub.acquire("test")
+    stale = ProtocolFrame(
+        message_type=MessageType.LIGHT,
+        sequence=10,
+        device_uptime_ms=1_000,
+        payload=struct.pack("<f", 10.0),
+    )
+    fresh = ProtocolFrame(
+        message_type=MessageType.LIGHT,
+        sequence=11,
+        device_uptime_ms=1_100,
+        payload=struct.pack("<f", 11.0),
+    )
+    first.push(encode_frame(stale))
+    first.push(OSError("USB disconnected"))
+    _wait_for(lambda: hub.diagnostics()["reconnects"] >= 1)
+    second.push(encode_frame(fresh))
+
+    assert hub.read_frame(MessageType.LIGHT, timeout_s=0.5).frame == fresh
+    assert hub.diagnostics()["queue_drops"] == 1
+    hub.release("test")
+
+
+def test_serial_hub_recovers_after_initial_open_failures() -> None:
+    serial_port = QueueSerial()
+    attempts = 0
+
+    def factory() -> QueueSerial:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise OSError("port is not ready")
+        return serial_port
+
+    hub = Esp32SerialHub(
+        port="/dev/test-esp32",
+        startup_timeout_s=0.5,
+        reconnect_delay_s=0.001,
+        serial_factory=factory,
+    )
+    hub.acquire("test")
+
+    diagnostics = hub.diagnostics()
+    assert diagnostics["connected"] is True
+    assert diagnostics["connection_attempts"] == 3
+    assert diagnostics["last_error"] is None
+    hub.release("test")
+
+
+def test_serial_hub_rejects_out_of_order_and_accepts_device_reset() -> None:
+    serial_port = QueueSerial()
+    hub = Esp32SerialHub(
+        port="/dev/test-esp32",
+        startup_timeout_s=0.5,
+        serial_factory=lambda: serial_port,
+    )
+    hub.acquire("test")
+    before_reset = [
+        ProtocolFrame(
+            message_type=MessageType.LIGHT,
+            sequence=sequence,
+            device_uptime_ms=uptime_ms,
+            payload=struct.pack("<f", float(sequence)),
+        )
+        for sequence, uptime_ms in ((10, 1_000), (12, 1_200), (11, 1_300))
+    ]
+    reset_heartbeat = ProtocolFrame(
+        message_type=MessageType.HEARTBEAT,
+        sequence=0,
+        device_uptime_ms=5,
+        payload=struct.pack("<II", 1 << 3, 0),
+    )
+    after_reset = ProtocolFrame(
+        message_type=MessageType.LIGHT,
+        sequence=1,
+        device_uptime_ms=10,
+        payload=struct.pack("<f", 99.0),
+    )
+    serial_port.push(
+        b"".join(encode_frame(frame) for frame in before_reset)
+        + encode_frame(reset_heartbeat)
+        + encode_frame(after_reset)
+    )
+    _wait_for(lambda: hub.diagnostics()["protocol_decoded_frames"] == 5)
+
+    received = hub.read_frame(MessageType.LIGHT, timeout_s=0.2)
+    diagnostics = hub.diagnostics()
+    assert received.frame == after_reset
+    assert diagnostics["sequence_gaps"] == 1
+    assert diagnostics["out_of_order"] == 1
+    assert diagnostics["device_resets"] == 1
+    assert diagnostics["queue_drops"] == 2
+    hub.release("test")
+
+
+def test_serial_hub_counts_invalid_semantics_and_unknown_messages() -> None:
+    serial_port = QueueSerial()
+    hub = Esp32SerialHub(
+        port="/dev/test-esp32",
+        startup_timeout_s=0.5,
+        serial_factory=lambda: serial_port,
+    )
+    hub.acquire("test")
+    frames = [
+        ProtocolFrame(MessageType.HEARTBEAT, 1, 10, b"short"),
+        ProtocolFrame(
+            MessageType.HEALTH,
+            2,
+            20,
+            struct.pack("<BBHI", MessageType.LIGHT, 7, 0, 0),
+        ),
+        ProtocolFrame(0x7F, 3, 30, b"future"),
+    ]
+    serial_port.push(b"".join(encode_frame(frame) for frame in frames))
+    _wait_for(lambda: hub.diagnostics()["frames_received"] == 3)
+
+    diagnostics = hub.diagnostics()
+    assert diagnostics["semantic_errors"] == 2
+    assert diagnostics["unknown_frames"] == 1
+    assert diagnostics["capability_mask"] == 0
+    hub.release("test")
+
+
+def test_serial_hub_stress_keeps_only_bounded_tail() -> None:
+    serial_port = QueueSerial()
+    hub = Esp32SerialHub(
+        port="/dev/test-esp32",
+        queue_size=8,
+        startup_timeout_s=0.5,
+        serial_factory=lambda: serial_port,
+    )
+    hub.acquire("test")
+    frames = [
+        ProtocolFrame(
+            message_type=MessageType.LIGHT,
+            sequence=sequence,
+            device_uptime_ms=sequence,
+            payload=struct.pack("<f", float(sequence)),
+        )
+        for sequence in range(1, 1_001)
+    ]
+    serial_port.push(b"".join(encode_frame(frame) for frame in frames))
+    _wait_for(
+        lambda: hub.diagnostics()["protocol_decoded_frames"] == 1_000,
+        timeout_s=2.0,
+    )
+
+    received = [
+        hub.read_frame(MessageType.LIGHT, timeout_s=0.2).frame.sequence
+        for _ in range(8)
+    ]
+    diagnostics = hub.diagnostics()
+    assert received == list(range(993, 1_001))
+    assert diagnostics["queue_drops"] == 992
+    assert diagnostics["queue_depths"][str(int(MessageType.LIGHT))] == 0
+    hub.release("test")
+
+
+def test_hub_adapters_emit_unchanged_complete_window() -> None:
+    serial_port = QueueSerial()
+    clock = ManualClock(start=NOW)
+    hub = Esp32SerialHub(
+        port="/dev/test-esp32",
+        startup_timeout_s=0.5,
+        serial_factory=lambda: serial_port,
+        clock=clock,
+    )
+    common = {
+        "hub": hub,
+        "sample_timeout_s": 0.2,
+        "sample_rate_hz": 0.2,
+        "max_retries": 0,
+        "clock": clock,
+    }
+    drivers = {
+        "thermal": Esp32HubThermalDriver(**common),
+        "radar": Esp32HubRadarDriver(**common),
+        "sound": Esp32HubSoundDriver(**common),
+        "light": Esp32HubLightDriver(**common),
+        "climate": Esp32HubClimateDriver(**common),
+    }
+    orchestrator = SensorOrchestrator(
+        room_id="room_a",
+        device_id="pi5-a",
+        window_seconds=5,
+        drivers=drivers,
+        clock=clock,
+    )
+    frames = [
+        ProtocolFrame(
+            MessageType.HEARTBEAT,
+            1,
+            100,
+            struct.pack("<II", 0x1F, 0),
+        ),
+        ProtocolFrame(MessageType.THERMAL, 2, 110, _thermal_payload()),
+        ProtocolFrame(MessageType.RADAR, 3, 120, _radar_payload()),
+        ProtocolFrame(
+            MessageType.SOUND,
+            4,
+            130,
+            struct.pack("<fffH", 0.2, 0.05, 0.4, 800),
+        ),
+        ProtocolFrame(MessageType.LIGHT, 5, 140, struct.pack("<f", 420.5)),
+        ProtocolFrame(
+            MessageType.CLIMATE,
+            6,
+            150,
+            struct.pack("<ff", 24.5, 61.0),
+        ),
+    ]
+    try:
+        orchestrator.start()
+        serial_port.push(b"".join(encode_frame(frame) for frame in frames))
+        _wait_for(lambda: hub.diagnostics()["frames_received"] == 6)
+        window = orchestrator.run_window()
+    finally:
+        orchestrator.close()
+
+    assert window.payload["schema_version"] == "1.0"
+    assert window.payload["thermal"]["frame_count"] == 1
+    assert window.payload["radar"]["sample_count"] == 1
+    assert window.payload["sound"]["rms_mean"] == pytest.approx(0.2)
+    assert window.payload["environment"] == {
+        "light_lux": pytest.approx(420.5),
+        "temperature_c": pytest.approx(24.5),
+        "humidity_pct": pytest.approx(61.0),
+    }
+    assert window.payload["quality"] == {"completeness": 1.0, "warnings": []}
+    assert len(window.thermal_frames) == 1
+    assert "raw_audio" not in str(window.payload).lower()
 
 
 def test_bootstrap_builds_five_adapters_sharing_one_hub() -> None:

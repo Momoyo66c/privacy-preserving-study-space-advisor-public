@@ -173,3 +173,14 @@ def test_stream_handles_deterministic_random_chunking() -> None:
     actual = [frame for chunk in chunks for frame in stream.feed(chunk)]
     assert actual == expected
     assert stream.stats().invalid_frames == 0
+
+
+def test_stream_discards_megabyte_garbage_with_bounded_memory() -> None:
+    stream = Esp32FrameStream()
+    valid = _frame(sequence=42)
+
+    assert stream.feed(b"x" * 1_000_000) == []
+    assert stream.buffered_bytes == 0
+    assert stream.stats().oversize_frames == 1
+    assert stream.feed(b"\x00" + encode_frame(valid)) == [valid]
+    assert stream.buffered_bytes == 0

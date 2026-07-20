@@ -304,7 +304,8 @@ class Esp32SerialHub:
                         )
                         self._condition.notify_all()
             except Exception as exc:
-                self._record_disconnect(exc)
+                if not self._stop_event.is_set():
+                    self._record_disconnect(exc)
             finally:
                 try:
                     serial_port.close()
@@ -323,8 +324,20 @@ class Esp32SerialHub:
     def _record_disconnect(self, exc: Exception) -> None:
         with self._condition:
             self._connected = False
+            self._invalidate_remote_state_locked()
             self._last_error = f"{type(exc).__name__}: {exc}"
             self._condition.notify_all()
+
+    def _invalidate_remote_state_locked(self) -> None:
+        """Discard samples and availability learned from an old connection."""
+
+        for message_type, queue in self._queues.items():
+            self._queue_drops[message_type] += len(queue)
+            queue.clear()
+        self._heartbeat_seen = False
+        self._capability_mask = 0
+        self._device_dropped_samples = 0
+        self._remote_health.clear()
 
     def _ingest_locked(
         self,
@@ -379,8 +392,7 @@ class Esp32SerialHub:
             and frame.sequence < self._last_sequence
         ):
             self._device_resets += 1
-            for queue in self._queues.values():
-                queue.clear()
+            self._invalidate_remote_state_locked()
             self._last_sequence = frame.sequence
             self._last_uptime_ms = frame.device_uptime_ms
             return True
@@ -444,6 +456,7 @@ class Esp32SerialHub:
             self._thread = None
             self._serial = None
             self._connected = False
+            self._invalidate_remote_state_locked()
             self._condition.notify_all()
 
 
