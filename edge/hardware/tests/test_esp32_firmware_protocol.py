@@ -77,3 +77,13 @@ def test_firmware_matches_identified_sensor_models_and_pins() -> None:
     assert "DHT sensor library (1.4.6)" in profile
     assert "Adafruit AHTX0" not in profile
     assert "ESP_I2S" not in source
+
+
+def test_quiet_hw485_windows_are_valid_unless_adc_is_rail_saturated() -> None:
+    source = (FIRMWARE_ROOT / "esp32_sensor_hub.ino").read_text()
+    config = (FIRMWARE_ROOT / "sensor_hub_config.h").read_text()
+
+    assert "maximum - minimum <= 4" not in source
+    assert "mean_raw <= pssa_config::kSoundRailGuardCounts" in source
+    assert "kAdcMaximum - pssa_config::kSoundRailGuardCounts" in source
+    assert "kSoundRailGuardCounts = 8" in config

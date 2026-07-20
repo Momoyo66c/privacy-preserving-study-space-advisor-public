@@ -382,27 +382,22 @@ void serviceSound(uint32_t now) {
   }
   last_sound_ms = now;
   double sum = 0.0;
-  uint16_t minimum = pssa_config::kAdcMaximum;
-  uint16_t maximum = 0;
   for (uint16_t index = 0; index < pssa_config::kAudioChunkFrames; ++index) {
     const uint16_t raw =
         static_cast<uint16_t>(analogRead(pssa_config::kSoundAdcPin));
     audio_samples[index] = raw;
     sum += raw;
-    if (raw < minimum) {
-      minimum = raw;
-    }
-    if (raw > maximum) {
-      maximum = raw;
-    }
     delayMicroseconds(pssa_config::kAudioSampleIntervalUs);
   }
-  if (maximum - minimum <= 4) {
+
+  const double mean_raw = sum / pssa_config::kAudioChunkFrames;
+  if (mean_raw <= pssa_config::kSoundRailGuardCounts ||
+      mean_raw >=
+          pssa_config::kAdcMaximum - pssa_config::kSoundRailGuardCounts) {
     recordFailure(sound_state, ErrorCode::kInvalidValue);
     return;
   }
 
-  const double mean_raw = sum / pssa_config::kAudioChunkFrames;
   double centered_squares = 0.0;
   double peak = 0.0;
   for (uint16_t index = 0; index < pssa_config::kAudioChunkFrames; ++index) {
