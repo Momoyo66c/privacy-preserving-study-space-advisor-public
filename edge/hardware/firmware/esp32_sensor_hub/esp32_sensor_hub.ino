@@ -205,10 +205,10 @@ void initializeThermal() {
   }
   mlx90640.setMode(MLX90640_CHESS);
   mlx90640.setResolution(MLX90640_ADC_18BIT);
-  // Read the sensor at 4 Hz while publishing at 2 Hz.  Adafruit's getFrame()
+  // Read the sensor at 8 Hz while publishing at 2 Hz.  Adafruit's getFrame()
   // waits for the next sensor refresh; matching both rates would monopolize
   // the cooperative loop and starve the 4 Hz sound sampler.
-  mlx90640.setRefreshRate(MLX90640_4_HZ);
+  mlx90640.setRefreshRate(MLX90640_8_HZ);
   thermal_initialized = true;
   recordSuccess(thermal_state);
 }

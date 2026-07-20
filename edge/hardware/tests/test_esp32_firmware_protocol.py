@@ -94,6 +94,6 @@ def test_thermal_refresh_does_not_starve_sound_sampling() -> None:
     source = (FIRMWARE_ROOT / "esp32_sensor_hub.ino").read_text()
     config = (FIRMWARE_ROOT / "sensor_hub_config.h").read_text()
 
-    assert "setRefreshRate(MLX90640_4_HZ)" in source
+    assert "setRefreshRate(MLX90640_8_HZ)" in source
     assert "kThermalIntervalMs = 500" in config
     assert "kSoundIntervalMs = 250" in config
