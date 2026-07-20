@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0",
+  "window_id": "room_a-20260716T063000.000Z",
+  "room_id": "room_a",
+  "device_id": "pi5-a",
+  "window_start": "2026-07-16T06:30:00Z",
+  "window_end": "2026-07-16T06:30:05Z",
+  "thermal": {
+    "health": "ok",
+    "frame_count": 10
+  },
+  "radar": {
+    "health": "ok",
+    "sample_count": 50,
+    "tracks": [
+      {
+        "sample_offset_ms": 0,
+        "targets": []
+      }
+    ]
+  },
+  "sound": {
+    "health": "ok",
+    "rms_mean": 0.036,
+    "rms_std": 0.004,
+    "peak": 0.071
+  },
+  "environment": {
+    "light_lux": 381.2,
+    "temperature_c": 24.0,
+    "humidity_pct": 58.1
+  },
+  "quality": {
+    "completeness": 1.0,
+    "warnings": []
+  }
+}

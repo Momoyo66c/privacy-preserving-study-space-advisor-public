@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://privacy-study-space-advisor.local/contracts/sensor_window.schema.json",
+  "title": "Module 1 sensor sampling window",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "window_id",
+    "room_id",
+    "device_id",
+    "window_start",
+    "window_end",
+    "thermal",
+    "radar",
+    "sound",
+    "environment",
+    "quality"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "window_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "room_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "device_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "window_start": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "window_end": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "thermal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["health", "frame_count"],
+      "properties": {
+        "health": {
+          "$ref": "#/$defs/sensor_health"
+        },
+        "frame_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "frames_ref": {
+          "type": "string",
+          "pattern": "^local://"
+        }
+      }
+    },
+    "radar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["health", "sample_count", "tracks"],
+      "properties": {
+        "health": {
+          "$ref": "#/$defs/sensor_health"
+        },
+        "sample_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tracks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sample_offset_ms", "targets"],
+            "properties": {
+              "sample_offset_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "targets": {
+                "type": "array",
+                "maxItems": 3,
+                "items": {
+                  "$ref": "#/$defs/radar_target"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "sound": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["health", "rms_mean", "rms_std", "peak"],
+      "properties": {
+        "health": {
+          "$ref": "#/$defs/sensor_health"
+        },
+        "rms_mean": {
+          "$ref": "#/$defs/nullable_number"
+        },
+        "rms_std": {
+          "$ref": "#/$defs/nullable_number"
+        },
+        "peak": {
+          "$ref": "#/$defs/nullable_number"
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["light_lux", "temperature_c", "humidity_pct"],
+      "properties": {
+        "light_lux": {
+          "$ref": "#/$defs/nullable_number"
+        },
+        "temperature_c": {
+          "$ref": "#/$defs/nullable_number"
+        },
+        "humidity_pct": {
+          "$ref": "#/$defs/nullable_number"
+        }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["completeness", "warnings"],
+      "properties": {
+        "completeness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "warnings": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sensor_health": {
+      "enum": ["ok", "degraded", "offline", "not_configured"]
+    },
+    "nullable_number": {
+      "type": ["number", "null"]
+    },
+    "radar_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x_mm",
+        "y_mm",
+        "speed_cm_s",
+        "distance_resolution_mm",
+        "valid",
+        "target_id"
+      ],
+      "properties": {
+        "x_mm": {
+          "type": "integer"
+        },
+        "y_mm": {
+          "type": "integer"
+        },
+        "speed_cm_s": {
+          "type": "integer"
+        },
+        "distance_resolution_mm": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "valid": {
+          "const": true
+        },
+        "target_id": {
+          "type": "string",
+          "pattern": "^target-[0-9a-f]{8}-[1-3]$"
+        }
+      }
+    }
+  }
+}

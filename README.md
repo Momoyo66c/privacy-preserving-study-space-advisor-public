@@ -2,7 +2,7 @@
 
 面向校园学习空间的隐私保护型 AIoT 推荐系统。Raspberry Pi 5 融合低分辨率热阵列、mmWave 雷达、声音强度、光照和温湿度信号，在本地判断房间状态；后端保存历史并预测短期占用；推荐层结合用户偏好生成房间排序和解释。
 
-> 当前阶段：仓库骨架与执行规格已经建立，功能代码将由四个模块并行实现。
+> 当前阶段：保留四模块规格，按采集/边缘、服务/数据、展示三层代码骨架串行维护。当前只核验参考源码、许可证和骨架，不提前实现完整 ML、LLM 或 Dashboard。
 
 ## 隐私原则
 
@@ -11,7 +11,7 @@
 - 热阵列用于整体占用和活动估计，不用于人员识别。
 - LLM 只接收结构化状态、预测和匿名偏好，不接收原始传感器数据。
 
-## 系统架构
+## 目标系统架构
 
 ```mermaid
 flowchart LR
@@ -32,6 +32,18 @@ flowchart LR
 | 4. 推荐与前端 | `frontend/` 及后端推荐适配层 | [`04_RECOMMENDATION_FRONTEND.md`](docs/module-specs/04_RECOMMENDATION_FRONTEND.md) | 排序、LLM fallback、Dashboard |
 
 所有实现者必须先阅读 [`00_SHARED_CONTRACT.md`](docs/module-specs/00_SHARED_CONTRACT.md)。
+
+## 三层代码骨架
+
+四个业务模块不需要改名或搬迁；它们在代码层面归入以下三层：
+
+| 层 | 目录 | 当前边界 |
+|---|---|---|
+| 采集与边缘层 | `edge/hardware/`、`edge/ml/` | 模块 01 保留已实现的驱动、采集和本地指示；模块 02 当前只保留入口骨架 |
+| 服务与数据层 | `backend/`、`shared/` | 保留现有后端成果与共享契约，本阶段不扩展预测或大模型能力 |
+| 展示层 | `frontend/` | 当前只保留模块入口说明，不开发 Dashboard |
+
+`tests/integration/` 是跨层验证入口，不属于任一业务层。各层之间只能通过 `shared/contracts/` 中的契约交换数据。
 
 ## 从这里开始
 

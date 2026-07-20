@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "privacy-study-space-hardware"
+version = "0.1.0"
+description = "Privacy-preserving sensor acquisition and edge hardware module"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "jsonschema>=4.0",
+  "numpy>=1.26",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+hardware = [
+  "Adafruit-Blinka>=8.0",
+  "adafruit-circuitpython-ahtx0>=1.0",
+  "adafruit-circuitpython-bh1750>=1.0",
+  "adafruit-circuitpython-mlx90640>=1.3",
+  "gpiozero>=2.0",
+  "lgpio>=0.2.2.0; sys_platform == 'linux' and platform_machine == 'aarch64'",
+  "pyserial>=3.5",
+  "sounddevice>=0.5",
+]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+]
+
+[project.scripts]
+study-space-probe-sensors = "study_space_hardware.cli:probe_main"
+study-space-collect-session = "study_space_hardware.cli:collect_main"
+study-space-run-simulator = "study_space_hardware.cli:simulator_main"
+study-space-verify-session = "study_space_hardware.cli:verify_main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
