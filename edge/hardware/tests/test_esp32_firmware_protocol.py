@@ -88,3 +88,12 @@ def test_quiet_hw485_zero_baseline_is_a_valid_sample() -> None:
     assert "kSoundRailGuardCounts" not in config
     assert "const double mean_raw" in source
     assert "writeFloatLe(payload, rms)" in source
+
+
+def test_thermal_refresh_does_not_starve_sound_sampling() -> None:
+    source = (FIRMWARE_ROOT / "esp32_sensor_hub.ino").read_text()
+    config = (FIRMWARE_ROOT / "sensor_hub_config.h").read_text()
+
+    assert "setRefreshRate(MLX90640_4_HZ)" in source
+    assert "kThermalIntervalMs = 500" in config
+    assert "kSoundIntervalMs = 250" in config
