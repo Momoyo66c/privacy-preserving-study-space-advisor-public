@@ -211,6 +211,15 @@ class Esp32SerialHub:
                     )
                 self._condition.wait(timeout=remaining)
 
+    def has_frame(self, message_type: int | MessageType) -> bool:
+        """Return whether one validated frame is ready without blocking."""
+
+        numeric_type = int(message_type)
+        if numeric_type not in self._queues:
+            raise ValueError(f"message type {numeric_type} is not a sensor queue")
+        with self._condition:
+            return bool(self._queues[numeric_type])
+
     def diagnostics(self) -> dict[str, Any]:
         """Return payload-free transport counters for health reporting."""
 
@@ -492,6 +501,11 @@ class Esp32HubSensorDriver(BaseSensorDriver):
 
     def _start(self) -> None:
         self.hub.acquire(self.name)
+
+    def sample_available(self) -> bool:
+        """Allow the orchestrator to avoid blocking other Hub adapters."""
+
+        return self.hub.has_frame(self.message_type)
 
     def _receive(self) -> ReceivedHubFrame:
         received = self.hub.read_frame(

@@ -804,6 +804,39 @@ def test_hub_adapters_emit_unchanged_complete_window() -> None:
     assert "raw_audio" not in str(window.payload).lower()
 
 
+def test_hub_adapter_exposes_nonblocking_sample_availability() -> None:
+    serial_port = QueueSerial()
+    hub = Esp32SerialHub(
+        port="/dev/test-esp32",
+        startup_timeout_s=0.5,
+        serial_factory=lambda: serial_port,
+    )
+    driver = Esp32HubSoundDriver(
+        hub=hub,
+        sample_timeout_s=0.2,
+        sample_rate_hz=4,
+        max_retries=0,
+    )
+    try:
+        driver.start()
+        assert driver.sample_available() is False
+        serial_port.push(
+            encode_frame(
+                ProtocolFrame(
+                    MessageType.SOUND,
+                    1,
+                    100,
+                    struct.pack("<fffH", 0.0, 0.0, 0.0, 400),
+                )
+            )
+        )
+        _wait_for(driver.sample_available)
+        assert driver.read().values["rms"] == 0.0
+        assert driver.sample_available() is False
+    finally:
+        driver.close()
+
+
 def test_bootstrap_builds_five_adapters_sharing_one_hub() -> None:
     config = config_from_dict(
         {

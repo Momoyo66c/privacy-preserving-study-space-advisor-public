@@ -80,6 +80,12 @@ class SensorOrchestrator:
             ]
             for name in due_names:
                 driver = self.drivers[name]
+                sample_available = getattr(driver, "sample_available", None)
+                if callable(sample_available) and not sample_available():
+                    # ESP32 Hub adapters share a background reader.  Waiting
+                    # on one empty logical queue would starve other queues
+                    # that already contain timestamped frames.
+                    continue
                 try:
                     accumulator.add(driver.read())
                 except SensorError as exc:
