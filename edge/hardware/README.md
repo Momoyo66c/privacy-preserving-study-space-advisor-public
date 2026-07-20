@@ -55,6 +55,7 @@ edge/hardware/
 │   └── real.example.yaml
 ├── scripts/
 │   ├── collect_session.py
+│   ├── live_thermal.py
 │   ├── probe_sensors.py
 │   └── run_simulator.py
 ├── src/study_space_hardware/
@@ -147,6 +148,33 @@ Blinka 与 GPIO 后端均可导入，再探测真实传感器。
 `probe_sensors.py` 对每个驱动输出连接状态、最近一次安全摘要和健康状态。它不会打印完整热矩阵或保存声音缓冲区。
 
 如果使用 micro:bit，将 `actuation.device` 改为 `microbit`，并在 `actuation.options.port` 设置串口。GPIO 模式需要在选项中提供 `red_pin`、`green_pin` 和 `blue_pin`。
+
+### 连续刷新 MLX90640 热图
+
+本地诊断工具持续读取热阵列，并通过只监听树莓派回环地址的网页显示
+32 × 24 实时热图。进程只在内存中保留最新一帧，不写热图文件、不上传
+后端，也不改变正式采样窗口。
+
+在树莓派启动：
+
+```bash
+cd /home/pi/privacy-study-space-advisor/edge/hardware
+export ESP32_HUB_PORT=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+PYTHONPATH=src .venv/bin/python scripts/live_thermal.py \
+  --config config/esp32-hub.example.yaml
+```
+
+默认地址为 `127.0.0.1:8765`。在 Mac 建立 SSH 隧道：
+
+```bash
+ssh -N -L 8765:127.0.0.1:8765 \
+  -i /Users/<user>/.ssh/id_ed25519 \
+  pi@192.0.2.76
+```
+
+然后在 Mac 浏览器打开 `http://127.0.0.1:8765`。网页默认每 500 ms
+拉取一次最新帧，与 ESP32 当前 2 Hz 热帧发布频率一致。按 `Ctrl-C` 停止；
+不要在没有访问控制的网络上把 `--host` 改为 `0.0.0.0`。
 
 ## ESP32 烧录与串口检查
 

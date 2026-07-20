@@ -22,6 +22,8 @@ MLX90640、LD2450、BH1750、AHTx0 和音频输入设备尚未接入。`HARDWARE
 - 单作业 CI 执行 80% 覆盖率门禁、编译检查和 wheel 构建。
 - Raspberry Pi 5 上的 `dev`/`hardware` 依赖安装和回归测试。
 - ESP32-D0WD-V3 的编译、烧录、哈希校验和 115200 baud 心跳验证。
+- 本机回环 HTTP 的 MLX90640 连续热图诊断工具；只在内存中保留最新
+  32 × 24 帧，不持久化、不上传后端。
 
 ## 模块 2 的入口
 
@@ -90,6 +92,15 @@ python scripts/probe_sensors.py --config config/example.yaml
 ```
 
 真实硬件验收使用 `config/real.example.yaml` 和 `HARDWARE_SMOKE_TEST.md`。
+
+实时查看当前 ESP32 Hub 热帧时，在树莓派设置 `ESP32_HUB_PORT` 后运行：
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/live_thermal.py \
+  --config config/esp32-hub.example.yaml
+```
+
+服务默认只监听 `127.0.0.1:8765`，应从 Mac 通过 SSH 本地端口转发访问。
 
 ## 2026-07-18 树莓派验证记录
 

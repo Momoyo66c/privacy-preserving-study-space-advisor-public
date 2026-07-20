@@ -35,6 +35,7 @@ study-space-probe-sensors = "study_space_hardware.cli:probe_main"
 study-space-collect-session = "study_space_hardware.cli:collect_main"
 study-space-run-simulator = "study_space_hardware.cli:simulator_main"
 study-space-verify-session = "study_space_hardware.cli:verify_main"
+study-space-live-thermal = "study_space_hardware.live_thermal:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
