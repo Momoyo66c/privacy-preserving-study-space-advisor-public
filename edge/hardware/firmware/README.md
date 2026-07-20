@@ -1,4 +1,12 @@
-# ESP32 串口烟雾测试固件
+# ESP32 固件
+
+本目录包含生产用 Sensor Hub 和早期链路烟雾测试两个固件。新部署应使用 `esp32_sensor_hub/`；`esp32_serial_smoke/` 只保留为 USB 串口故障排查工具。
+
+## Sensor Hub
+
+`esp32_sensor_hub/` 将 MLX90640、LD2450、BH1750、AHT20/AHT21 和可选 I2S 麦克风汇聚到 ESP32，再通过一条 USB 串口连接 Raspberry Pi。详细的接线、可复现构建和验证步骤见 [esp32_sensor_hub/README.md](esp32_sensor_hub/README.md)。二进制协议见 [../ESP32_HUB_PROTOCOL.md](../ESP32_HUB_PROTOCOL.md)。
+
+## 串口烟雾测试固件
 
 `esp32_serial_smoke/esp32_serial_smoke.ino` 只验证树莓派到 ESP32 的编译、烧录和串口通信链路。固件不连接 Wi-Fi，不读取传感器，也不保存数据。它不是 LD2450 固件，不能把同一个串口同时配置成雷达端口。
 
@@ -25,7 +33,7 @@ arduino-cli upload \
   firmware/esp32_serial_smoke
 ```
 
-烧录完成后，以 115200 baud 打开串口。成功输出如下：
+烧录烟雾测试固件后，以 115200 baud 打开串口。成功输出如下：
 
 ```text
 PSSA_ESP32_SMOKE_READY
@@ -33,4 +41,4 @@ PSSA_ESP32_HEARTBEAT seq=0
 PSSA_ESP32_HEARTBEAT seq=1
 ```
 
-设备编号会随 USB 插拔改变。部署配置应优先使用 `/dev/serial/by-id/` 下的稳定路径，并为 ESP32 和 LD2450 分配不同的串口设备。
+设备编号会随 USB 插拔改变。部署配置应优先使用 `/dev/serial/by-id/` 下的稳定路径。Sensor Hub 模式下 LD2450 接 ESP32 的 UART2，不再单独占用 Pi 的 USB 串口。
