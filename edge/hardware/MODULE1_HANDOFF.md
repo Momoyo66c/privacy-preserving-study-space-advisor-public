@@ -163,6 +163,20 @@ study-space-verify-session data/sessions/SESSION_ID
 
 详细证据和仍待完成的真实传感器步骤见 `HARDWARE_SMOKE_TEST.md`。ESP32 烧录命令见 `firmware/README.md`。
 
+## 2026-07-20 连续热图验证
+
+```text
+本机完整回归: 135 passed
+Raspberry Pi 相关回归: 52 passed
+真实连续帧序号: 22, 23, 25, 26（严格递增）
+真实帧形状: 24 x 32；每帧 768 值
+观测温度范围: 28.16–35.74 °C
+监听范围: 127.0.0.1:8765
+HTTP 缓存: no-store
+停止后端口/进程释放: passed
+停止后 ESP32 串口立即重读: passed
+```
+
 ## 外部代码与许可证
 
 - MLX90640 驱动通过 PyPI 依赖使用 Adafruit 的 MIT 许可 CircuitPython 包，没有把该仓库源码复制进本项目。
