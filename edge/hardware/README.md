@@ -40,7 +40,7 @@ python scripts/run_simulator.py \
 | 热阵列 | MLX90640 32 × 24 帧读取、长度/NaN/温度范围校验 |
 | 雷达 | HLK-LD2450 串口帧同步、包长校验、目标位置与速度解析 |
 | 声音 | 短时内存缓冲区的 RMS、标准差和峰值统计 |
-| 环境 | BH1750 光照与 AHTx0 温湿度驱动 |
+| 环境 | 直连 BH1750/AHTx0；Sensor Hub 模式支持 HW-486 未标定代理与 DHT11 |
 | 窗口 | 非重叠 5–10 秒窗口、样本计数、完整度和降级警告 |
 | 模拟器 | 7 种场景、固定随机种子、间歇故障 |
 | 本地采集 | JSONL 窗口、压缩 NPZ 热帧、SHA-256 校验和 |
@@ -73,7 +73,9 @@ edge/hardware/
 
 ## 配置
 
-`config/example.yaml` 默认启用模拟器，适合开发和 CI。`config/real.example.yaml` 关闭模拟器，作为 Raspberry Pi 配置起点。
+`config/example.yaml` 默认启用模拟器，适合开发和 CI。`config/real.example.yaml`
+保留 Raspberry Pi 直连兼容模式；当前实物使用 `config/esp32-hub.example.yaml`，
+由 ESP32 汇聚 MLX90640、HW-485、HW-486 和 DHT11。
 
 所有采集类 CLI 都要求显式传入 `--config`。这样从 wheel 安装后不会依赖源码目录中的隐式路径，也能在日志和复现实验时明确记录所用配置。
 
@@ -104,9 +106,11 @@ edge/hardware/
 - `degraded_radar`
 - `intermittent_failure`
 
-## Raspberry Pi 5 接线
+## Raspberry Pi 5 直连兼容模式接线
 
-以下引脚使用 Raspberry Pi 的物理引脚编号与 BCM 名称共同说明。接线前断电，并确认所有外设电压与模块版本。
+以下表格仅用于保留的直连驱动，不是当前 ESP32 Sensor Hub 接线。当前实物的
+传感器全部接 ESP32，Pi 只通过 USB 串口连接 ESP32；具体引脚与分压要求见
+`firmware/esp32_sensor_hub/README.md`。接线前断电，并确认外设电压与模块版本。
 
 | 设备 | Raspberry Pi 连接 | 说明 |
 |---|---|---|
@@ -135,6 +139,13 @@ sudo apt install i2c-tools portaudio19-dev liblgpio-dev swig
 cd edge/hardware
 source .venv/bin/activate
 python -m pip install -e '.[hardware,dev]'
+export ESP32_HUB_PORT=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+python scripts/probe_sensors.py --config config/esp32-hub.example.yaml
+```
+
+上面是当前生产连接。只有使用保留的 Raspberry Pi 直连模式时，才执行：
+
+```bash
 export RADAR_PORT=/dev/serial/by-id/REPLACE_WITH_LD2450_USB_TTL_DEVICE
 python scripts/probe_sensors.py --config config/real.example.yaml
 ```
@@ -289,7 +300,10 @@ edge/hardware/.venv/bin/python -m compileall -q \
 
 `.github/workflows/module1-ci.yml` 使用单个顺序作业执行完整测试、80% 总覆盖率门禁、编译检查和 wheel 构建。
 
-当前自动化测试已在无物理传感器的开发环境通过。真实硬件的 10 分钟连续采集、丢帧率、无效包率和资源占用仍需在 Raspberry Pi 上执行，记录模板见 `HARDWARE_SMOKE_TEST.md`。仓库不伪造真实硬件样例。
+自动化测试不依赖物理传感器；此外，当前四个实物传感器已完成基础探测和
+五秒窗口验收。真实硬件的 10 分钟连续会话、LD2450 和高帧率阶梯仍需在
+Raspberry Pi 上执行，记录见 `HARDWARE_SMOKE_TEST.md`。仓库不以模拟结果替代
+这些待执行指标。
 
 ## 常见问题
 

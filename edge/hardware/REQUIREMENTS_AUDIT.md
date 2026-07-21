@@ -1,6 +1,6 @@
 # 模块 01 规格复核
 
-复核日期：2026-07-21  
+复核日期：2026-07-21
 依据：`docs/module-specs/00_SHARED_CONTRACT.md`、`docs/module-specs/01_SENSOR_EDGE_HARDWARE.md`
 
 ## 结论
