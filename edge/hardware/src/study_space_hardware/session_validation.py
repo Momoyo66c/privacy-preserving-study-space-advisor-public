@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -101,6 +102,21 @@ def _safe_relative_path(value: str) -> PurePosixPath | None:
     return path
 
 
+def _utc_datetime(value: Any, label: str, errors: list[str]) -> datetime | None:
+    if not isinstance(value, str):
+        errors.append(f"{label} must be a UTC date-time string")
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        errors.append(f"{label} must be a valid UTC date-time string")
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() != timezone.utc.utcoffset(parsed):
+        errors.append(f"{label} must use UTC")
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
 def validate_session(
     session_path: str | Path,
     *,
@@ -136,7 +152,13 @@ def validate_session(
     metadata = _load_json(root / "session.json", "session.json", errors)
     session_id: str | None = None
     declared_window_count: int | None = None
+    metadata_room_id: str | None = None
+    metadata_device_id: str | None = None
+    session_started_at: datetime | None = None
+    session_ended_at: datetime | None = None
     if isinstance(metadata, dict):
+        if metadata.get("schema_version") != "1.0":
+            errors.append("session.json schema_version must be 1.0")
         raw_session_id = metadata.get("session_id")
         if isinstance(raw_session_id, str) and raw_session_id:
             session_id = raw_session_id
@@ -149,6 +171,47 @@ def validate_session(
             declared_window_count = raw_count
         else:
             errors.append("session.json window_count must be a non-negative integer")
+        for field in ("room_id", "device_id", "scenario", "driver_version"):
+            value = metadata.get(field)
+            if not isinstance(value, str) or not value or not value.isascii():
+                errors.append(f"session.json {field} must be a non-empty ASCII string")
+        if isinstance(metadata.get("room_id"), str):
+            metadata_room_id = metadata["room_id"]
+        if isinstance(metadata.get("device_id"), str):
+            metadata_device_id = metadata["device_id"]
+        session_started_at = _utc_datetime(
+            metadata.get("started_at"), "session.json started_at", errors
+        )
+        session_ended_at = _utc_datetime(
+            metadata.get("ended_at"), "session.json ended_at", errors
+        )
+        if (
+            session_started_at is not None
+            and session_ended_at is not None
+            and session_ended_at < session_started_at
+        ):
+            errors.append("session.json ended_at precedes started_at")
+        if metadata.get("participant_range") is not None and not isinstance(
+            metadata.get("participant_range"), str
+        ):
+            errors.append("session.json participant_range must be null or a string")
+        if not isinstance(metadata.get("operator_notes"), str):
+            errors.append("session.json operator_notes must be a string")
+        sampling_config = metadata.get("sampling_config")
+        if not isinstance(sampling_config, dict):
+            errors.append("session.json sampling_config must be an object")
+        else:
+            window_seconds = sampling_config.get("window_seconds")
+            if (
+                not isinstance(window_seconds, (int, float))
+                or isinstance(window_seconds, bool)
+                or not 5 <= float(window_seconds) <= 10
+            ):
+                errors.append(
+                    "session.json sampling_config.window_seconds must be between 5 and 10"
+                )
+            if not isinstance(sampling_config.get("sensors"), dict):
+                errors.append("session.json sampling_config.sensors must be an object")
         privacy = metadata.get("privacy")
         if not isinstance(privacy, dict):
             errors.append("session.json privacy must be an object")
@@ -240,9 +303,36 @@ def validate_session(
         errors.append("windows.jsonl contains duplicate window_id values")
 
     referenced_thermal: set[str] = set()
+    previous_window_end: datetime | None = None
     for index, payload in enumerate(windows, start=1):
+        if metadata_room_id is not None and payload.get("room_id") != metadata_room_id:
+            errors.append(f"window {index} room_id does not match session.json")
+        if (
+            metadata_device_id is not None
+            and payload.get("device_id") != metadata_device_id
+        ):
+            errors.append(f"window {index} device_id does not match session.json")
+        window_start = _utc_datetime(
+            payload.get("window_start"), f"window {index} window_start", errors
+        )
+        window_end = _utc_datetime(
+            payload.get("window_end"), f"window {index} window_end", errors
+        )
+        if window_start is not None and window_end is not None:
+            duration_s = (window_end - window_start).total_seconds()
+            if not 5 <= duration_s <= 10:
+                errors.append(f"window {index} duration must be between 5 and 10 seconds")
+            if previous_window_end is not None and window_start < previous_window_end:
+                errors.append(f"window {index} overlaps or is out of order")
+            if session_started_at is not None and window_start < session_started_at:
+                errors.append(f"window {index} starts before the session")
+            if session_ended_at is not None and window_end > session_ended_at:
+                errors.append(f"window {index} ends after the session")
+            previous_window_end = window_end
         thermal = payload.get("thermal")
         if not isinstance(thermal, dict) or "frames_ref" not in thermal:
+            if isinstance(thermal, dict) and thermal.get("frame_count", 0) > 0:
+                errors.append(f"window {index} has thermal frames but no frames_ref")
             continue
         reference = thermal["frames_ref"]
         prefix = f"local://{session_id}/" if session_id else None
@@ -255,6 +345,8 @@ def validate_session(
             errors.append(f"window {index} has unsafe thermal frames_ref")
             continue
         name = safe_name.as_posix()
+        if name in referenced_thermal:
+            errors.append(f"window {index} reuses thermal frames_ref: {name}")
         referenced_thermal.add(name)
         thermal_path = root / Path(*safe_name.parts)
         if not thermal_path.is_file():
@@ -271,6 +363,12 @@ def validate_session(
                     errors.append(f"thermal NPZ must have shape (N, 768): {name}")
                 elif not isinstance(expected_frames, int) or frames.shape[0] != expected_frames:
                     errors.append(f"thermal NPZ frame count mismatch: {name}")
+                elif not np.issubdtype(frames.dtype, np.number):
+                    errors.append(f"thermal NPZ frames must be numeric: {name}")
+                elif not np.isfinite(frames).all():
+                    errors.append(f"thermal NPZ contains non-finite values: {name}")
+                elif frames.size and (frames.min() < -40 or frames.max() > 300):
+                    errors.append(f"thermal NPZ contains out-of-range temperatures: {name}")
         except (OSError, ValueError) as exc:
             errors.append(f"invalid thermal NPZ {name}: {type(exc).__name__}: {exc}")
 

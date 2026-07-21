@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
+
+import numpy as np
 
 from study_space_hardware.bootstrap import build_orchestrator
 from study_space_hardware.cli import verify_main
@@ -13,6 +16,20 @@ from study_space_hardware.storage import SessionWriter
 
 
 EXAMPLE_CONFIG = Path(__file__).parents[1] / "config/example.yaml"
+
+
+def _rewrite_checksums(session_path: Path) -> None:
+    checksums = {
+        path.relative_to(session_path).as_posix(): hashlib.sha256(
+            path.read_bytes()
+        ).hexdigest()
+        for path in session_path.rglob("*")
+        if path.is_file() and path.name != "checksums.json"
+    }
+    (session_path / "checksums.json").write_text(
+        json.dumps(checksums) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _create_session(tmp_path: Path) -> Path:
@@ -105,3 +122,43 @@ def test_window_contract_error_fails(tmp_path: Path) -> None:
     assert report.valid is False
     assert any("schema error" in error and "room_id" in error for error in report.errors)
     assert "checksum mismatch: windows.jsonl" in report.errors
+
+
+def test_semantic_session_mismatch_fails_even_with_updated_checksums(
+    tmp_path: Path,
+) -> None:
+    session_path = _create_session(tmp_path)
+    windows_path = session_path / "windows.jsonl"
+    payload = json.loads(windows_path.read_text(encoding="utf-8"))
+    payload["room_id"] = "different-room"
+    payload["window_end"] = payload["window_start"]
+    windows_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    _rewrite_checksums(session_path)
+
+    report = validate_session(session_path)
+
+    assert report.valid is False
+    assert "window 1 room_id does not match session.json" in report.errors
+    assert "window 1 duration must be between 5 and 10 seconds" in report.errors
+    assert not any(error.startswith("checksum mismatch") for error in report.errors)
+
+
+def test_non_finite_thermal_values_fail_even_with_updated_checksums(
+    tmp_path: Path,
+) -> None:
+    session_path = _create_session(tmp_path)
+    thermal_path = next((session_path / "thermal").glob("*.npz"))
+    with np.load(thermal_path, allow_pickle=False) as data:
+        frames = data["frames"].copy()
+    frames[0, 0] = np.nan
+    np.savez_compressed(thermal_path, frames=frames)
+    _rewrite_checksums(session_path)
+
+    report = validate_session(session_path)
+
+    assert report.valid is False
+    assert (
+        f"thermal NPZ contains non-finite values: thermal/{thermal_path.name}"
+        in report.errors
+    )
+    assert not any(error.startswith("checksum mismatch") for error in report.errors)

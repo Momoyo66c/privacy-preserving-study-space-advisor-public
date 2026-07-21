@@ -226,6 +226,20 @@ study-space-verify-session data/sessions/SESSION_ID
 
 验收工具检查 `session.json` 隐私字段、`windows.jsonl` 共享 Schema、文件 SHA-256、热帧 NPZ 的 `(N, 768)` 形状和窗口帧数，同时拒绝符号链接、未登记文件以及音频、RGB 图像和视频扩展名。成功时输出 `"valid": true` 并返回 0；任何错误都会列在 `errors` 中并返回 1。工具不会修复或改写会话。
 
+模块 2 不需要重复实现本地 URI、校验和和 NPZ 解析。读取前使用同一严格验收边界：
+
+```python
+from study_space_hardware.session_reader import SessionReader
+
+for item in SessionReader("data/sessions/SESSION_ID"):
+    sensor_window = item.payload
+    thermal_frames = item.thermal_frames
+```
+
+读取器先验证完整会话，再按 `windows.jsonl` 顺序流式加载窗口。热阵列为只读
+`float32`、形状 `(N, 768)`；没有热帧时为 `None`。元数据、窗口房间/设备、
+UTC 时间范围、非重叠顺序、NPZ 有限值和温度范围不一致时会拒绝整个会话。
+
 ## 窗口契约
 
 JSON Schema 位于 `../../shared/contracts/sensor_window.schema.json`，示例位于 `../../shared/fixtures/`。
