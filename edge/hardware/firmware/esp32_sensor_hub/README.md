@@ -23,7 +23,43 @@ HW-485 使用 5 V 供电时，AO 必须先经过 10 kΩ/10 kΩ 分压，不能�
 
 HW-485 的模拟引脚无法仅凭静音电平区分“正常安静”和“信号线接地/断开”。首次部署必须做一次有声响应试验；本项目实物已用临时聚合诊断确认，静音窗口为 0，制造声音时 GPIO34 峰值会上升。生产固件不传输原始 ADC 序列。
 
-MLX90640 内部刷新率设为 8 Hz，但协议仍按 2 Hz 发布热帧。这样可把阻塞式 `getFrame()` 的等待缩短到约 125 ms，避免持续占用协作式主循环，并保证 HW-485 的 4 Hz 统计和 HW-486 的 1 Hz 采样获得调度时间。
+### 选择热成像性能档位
+
+固件提供三个编译时档位。MLX90640 的刷新率指子页频率；两个子页组成
+一幅完整 32 × 24 热图，因此完整画面帧率最多是子页频率的一半。
+
+| 档位 | 宏值 | MLX 子页 | 完整热图 | 运行期 I²C | USB 串口 | 状态 |
+|---|---:|---:|---:|---:|---:|---|
+| `analytics` | `0` | 8 Hz | 2 FPS 发布 | 400 kHz | 460800 | 默认，实机验证通过 |
+| `smooth` | `1` | 32 Hz | 16 FPS 发布 | 1 MHz | 460800 | 仅完成本地编译配置验证 |
+| `live_max` | `2` | 64 Hz | 32 FPS 发布 | 1 MHz | 921600 | 仅完成本地编译配置验证 |
+
+普通构建不传宏，始终使用 `analytics`，不会意外改变已经验证的正式采集配置：
+
+```bash
+arduino-cli compile --profile esp32_sensor_hub firmware/esp32_sensor_hub
+```
+
+编译 `smooth` 或 `live_max`：
+
+```bash
+arduino-cli compile --profile esp32_sensor_hub \
+  --build-property build.extra_flags=-DPSSA_THERMAL_PROFILE=1 \
+  firmware/esp32_sensor_hub
+
+arduino-cli compile --profile esp32_sensor_hub \
+  --build-property build.extra_flags=-DPSSA_THERMAL_PROFILE=2 \
+  firmware/esp32_sensor_hub
+```
+
+> **Warning:** `live_max` 将 USB 串口改为 921600 baud。烧录前必须把 Pi
+> 主机配置改为相同波特率。当前尚未在实物上验证 1 MHz I²C、921600
+> 串口或 32 FPS 连续运行，不能把本地编译测试当成硬件通过。
+
+MLX90640 初始化和 EEPROM 校准读取始终保持 400 kHz；只有初始化成功后，
+高帧率档位才切换到 1 MHz。编译期带宽门禁按最坏 1566 字节热帧计算，
+限制热流最多占 UART 理论容量的 80%，为声音、光照、温湿度、心跳和雷达
+保留空间。不安全或未知档位会直接编译失败。
 
 HW-486 不是照度计。在使用参考照度计完成标定前，Pi 端固定输出 `light_lux=null`、`calibrated_lux=false` 和 `hw486_uncalibrated_light_proxy` 警告，不能把 ADC 数值写成 lux。遮挡/照射试验还需确认数值方向。
 
@@ -31,9 +67,8 @@ HW-486 不是照度计。在使用参考照度计完成标定前，Pi 端固定�
 
 需要 Arduino CLI 1.x。`sketch.yaml` 固定 ESP32 core 和全部直接编译依赖的版本；profile 构建使用隔离环境，不依赖全局安装的库。
 
-```bash
-arduino-cli compile --profile esp32_sensor_hub firmware/esp32_sensor_hub
-```
+默认的可复现构建命令见上一节。高帧率档位只改变编译宏，不改变固定的
+ESP32 core 和库版本。
 
 当前目标是经典 ESP32-D0WD-V3 的通用 `esp32:esp32:esp32` FQBN。烧录前先确认端口实际对应 ESP32：
 

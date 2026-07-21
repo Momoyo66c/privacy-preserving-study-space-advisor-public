@@ -75,7 +75,7 @@ uint32_t sequence_number = 0;
 uint32_t capability_mask = 0;
 uint32_t dropped_samples = 0;
 uint32_t last_heartbeat_ms = 0;
-uint32_t last_thermal_ms = 0;
+uint32_t last_thermal_us = 0;
 uint32_t last_sound_ms = 0;
 uint32_t last_light_ms = 0;
 uint32_t last_climate_ms = 0;
@@ -198,6 +198,7 @@ void initializeThermal() {
                 ErrorCode::kDisabled, true);
     return;
   }
+  Wire.setClock(pssa_config::kI2cInitializationFrequencyHz);
   if (!i2cPresent(MLX90640_I2CADDR_DEFAULT) ||
       !mlx90640.begin(MLX90640_I2CADDR_DEFAULT, &Wire)) {
     recordFailure(thermal_state, ErrorCode::kInitializationFailed);
@@ -205,10 +206,14 @@ void initializeThermal() {
   }
   mlx90640.setMode(MLX90640_CHESS);
   mlx90640.setResolution(MLX90640_ADC_18BIT);
-  // Read the sensor at 8 Hz while publishing at 2 Hz.  Adafruit's getFrame()
-  // waits for the next sensor refresh; matching both rates would monopolize
-  // the cooperative loop and starve the 4 Hz sound sampler.
+#if PSSA_THERMAL_PROFILE == PSSA_THERMAL_PROFILE_ANALYTICS
   mlx90640.setRefreshRate(MLX90640_8_HZ);
+#elif PSSA_THERMAL_PROFILE == PSSA_THERMAL_PROFILE_SMOOTH
+  mlx90640.setRefreshRate(MLX90640_32_HZ);
+#elif PSSA_THERMAL_PROFILE == PSSA_THERMAL_PROFILE_LIVE_MAX
+  mlx90640.setRefreshRate(MLX90640_64_HZ);
+#endif
+  Wire.setClock(pssa_config::kI2cRuntimeFrequencyHz);
   thermal_initialized = true;
   recordSuccess(thermal_state);
 }
@@ -284,13 +289,13 @@ void retryFailedInitializations(uint32_t now) {
   }
 }
 
-void serviceThermal(uint32_t now) {
+void serviceThermal(uint32_t now_us) {
   if (!thermal_initialized ||
-      static_cast<uint32_t>(now - last_thermal_ms) <
-          pssa_config::kThermalIntervalMs) {
+      static_cast<uint32_t>(now_us - last_thermal_us) <
+          pssa_config::kThermalIntervalUs) {
     return;
   }
-  last_thermal_ms = now;
+  last_thermal_us = now_us;
   if (mlx90640.getFrame(thermal_frame) != 0) {
     recordFailure(thermal_state, ErrorCode::kReadFailed);
     return;
@@ -494,7 +499,7 @@ void serviceRadar(uint32_t now) {
 void setup() {
   Serial.begin(pssa_config::kHostSerialBaudRate);
   Wire.begin(pssa_config::kI2cSdaPin, pssa_config::kI2cSclPin);
-  Wire.setClock(pssa_config::kI2cFrequencyHz);
+  Wire.setClock(pssa_config::kI2cInitializationFrequencyHz);
 
   initializeRadar();
   initializeThermal();
@@ -504,7 +509,7 @@ void setup() {
 
   const uint32_t now = millis();
   last_heartbeat_ms = now;
-  last_thermal_ms = now;
+  last_thermal_us = micros();
   last_sound_ms = now;
   last_light_ms = now;
   last_climate_ms = now;
@@ -516,7 +521,7 @@ void loop() {
   const uint32_t now = millis();
   serviceRadar(now);
   retryFailedInitializations(now);
-  serviceThermal(now);
+  serviceThermal(micros());
   serviceSound(now);
   serviceEnvironment(now);
   if (static_cast<uint32_t>(now - last_heartbeat_ms) >=

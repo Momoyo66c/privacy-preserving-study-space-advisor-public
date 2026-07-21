@@ -10,6 +10,7 @@ import pytest
 HARDWARE_ROOT = Path(__file__).parents[1]
 FIRMWARE_ROOT = HARDWARE_ROOT / "firmware/esp32_sensor_hub"
 HARNESS = HARDWARE_ROOT / "tests/cpp/esp32_protocol_golden.cpp"
+PROFILE_HARNESS = HARDWARE_ROOT / "tests/cpp/thermal_profile_config.cpp"
 
 
 def test_firmware_protocol_matches_python_golden_vector(tmp_path: Path) -> None:
@@ -90,10 +91,85 @@ def test_quiet_hw485_zero_baseline_is_a_valid_sample() -> None:
     assert "writeFloatLe(payload, rms)" in source
 
 
-def test_thermal_refresh_does_not_starve_sound_sampling() -> None:
+@pytest.mark.parametrize(
+    ("profile", "i2c_hz", "serial_baud", "refresh_hz", "publish_fps"),
+    [
+        (0, 400_000, 460_800, 8, 2),
+        (1, 1_000_000, 460_800, 32, 16),
+        (2, 1_000_000, 921_600, 64, 32),
+    ],
+)
+def test_thermal_profiles_compile_with_safe_bandwidth(
+    tmp_path: Path,
+    profile: int,
+    i2c_hz: int,
+    serial_baud: int,
+    refresh_hz: int,
+    publish_fps: int,
+) -> None:
+    compiler = shutil.which("c++")
+    if compiler is None:
+        pytest.skip("a C++ compiler is required for thermal profile tests")
+    binary = tmp_path / f"thermal-profile-{profile}"
+    subprocess.run(
+        [
+            compiler,
+            "-std=c++17",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            f"-DPSSA_THERMAL_PROFILE={profile}",
+            f"-DEXPECT_I2C_RUNTIME_HZ={i2c_hz}",
+            f"-DEXPECT_SERIAL_BAUD={serial_baud}",
+            f"-DEXPECT_REFRESH_HZ={refresh_hz}",
+            f"-DEXPECT_PUBLISH_FPS={publish_fps}",
+            str(PROFILE_HARNESS),
+            f"-I{FIRMWARE_ROOT}",
+            "-o",
+            str(binary),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run([str(binary)], check=True, capture_output=True, text=True)
+
+
+def test_unsupported_thermal_profile_fails_at_compile_time(tmp_path: Path) -> None:
+    compiler = shutil.which("c++")
+    if compiler is None:
+        pytest.skip("a C++ compiler is required for thermal profile tests")
+    result = subprocess.run(
+        [
+            compiler,
+            "-std=c++17",
+            "-DPSSA_THERMAL_PROFILE=99",
+            "-DEXPECT_I2C_RUNTIME_HZ=0",
+            "-DEXPECT_SERIAL_BAUD=0",
+            "-DEXPECT_REFRESH_HZ=0",
+            "-DEXPECT_PUBLISH_FPS=1",
+            str(PROFILE_HARNESS),
+            f"-I{FIRMWARE_ROOT}",
+            "-o",
+            str(tmp_path / "invalid-profile"),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "unsupported PSSA_THERMAL_PROFILE" in result.stderr
+
+
+def test_thermal_service_uses_profile_rate_without_starving_sound() -> None:
     source = (FIRMWARE_ROOT / "esp32_sensor_hub.ino").read_text()
     config = (FIRMWARE_ROOT / "sensor_hub_config.h").read_text()
 
     assert "setRefreshRate(MLX90640_8_HZ)" in source
-    assert "kThermalIntervalMs = 500" in config
+    assert "setRefreshRate(MLX90640_32_HZ)" in source
+    assert "setRefreshRate(MLX90640_64_HZ)" in source
+    assert "kThermalIntervalUs" in source
+    assert "serviceThermal(micros())" in source
+    assert "kSerialUtilizationLimitPercent = 80" in config
     assert "kSoundIntervalMs = 250" in config
