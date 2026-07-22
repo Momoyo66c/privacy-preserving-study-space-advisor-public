@@ -148,6 +148,7 @@
 - 实时五秒会话 `session-20260722T061128563Z-eb4a8d2b` 整包验收 `valid=true`：热阵列 10 帧，声音、光照、温湿度正常，雷达以 degraded/0 样本显式打包，未写入原始音频或伪造轨迹。
 - 本机模块 01 完整标准回归 144 项通过，Python 编译检查通过。
 - 2026-07-22 按最终四传感器基线禁用两份真实配置和 ESP32 固件中的 radar；配置、Hub 和固件针对性标准测试 69 项通过。兼容驱动、模拟器和共享 `radar` 字段保留。
+- 四传感器推理安全边界已固定：热阵列 offline 且雷达 not_configured 时输出 `not_inference_ready:thermal_offline_without_radar`；窗口、模拟集成与会话针对性回归 18 项通过。
 
 ## 下一步
 

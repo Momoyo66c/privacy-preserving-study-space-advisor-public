@@ -136,11 +136,15 @@ class WindowAccumulator:
             status = _direct_health(health_reports, name)
             if status is not SensorHealth.OK:
                 warnings.append(f"{name}:{status.value}")
-        if (
-            _direct_health(health_reports, "thermal") is SensorHealth.OFFLINE
-            and _direct_health(health_reports, "radar") is SensorHealth.OFFLINE
-        ):
-            warnings.append("not_inference_ready:thermal_and_radar_offline")
+        thermal_health = _direct_health(health_reports, "thermal")
+        radar_health = _direct_health(health_reports, "radar")
+        if thermal_health is SensorHealth.OFFLINE:
+            if radar_health is SensorHealth.OFFLINE:
+                warnings.append("not_inference_ready:thermal_and_radar_offline")
+            elif radar_health is SensorHealth.NOT_CONFIGURED:
+                warnings.append(
+                    "not_inference_ready:thermal_offline_without_radar"
+                )
 
         payload = {
             "schema_version": SCHEMA_VERSION,
