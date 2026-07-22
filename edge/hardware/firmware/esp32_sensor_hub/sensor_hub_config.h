@@ -36,8 +36,8 @@ constexpr uint32_t kAudioSampleIntervalUs = 250;
 constexpr uint8_t kLightOversampleCount = 16;
 
 constexpr bool kEnableThermal = true;
-// Keep disabled until the LD2450 arrives and is physically connected.
-constexpr bool kEnableRadar = false;
+// LD2450 is connected to UART2 at 256000 8N1.
+constexpr bool kEnableRadar = true;
 constexpr bool kEnableLight = true;
 constexpr bool kEnableClimate = true;
 constexpr bool kEnableAnalogSound = true;

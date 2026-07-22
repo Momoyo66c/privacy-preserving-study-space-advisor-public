@@ -27,8 +27,8 @@ sensors:
       minimum_c: -40
       maximum_c: 300
   radar:
-    # Enable after the LD2450 arrives and GPIO16/17 wiring is verified.
-    enabled: false
+    # LD2450 TX -> GPIO16/RX2; LD2450 RX -> GPIO17/TX2.
+    enabled: true
     sample_rate_hz: 10
     max_retries: 1
     offline_threshold: 3

@@ -57,7 +57,7 @@ def test_esp32_hub_example_uses_one_explicit_serial_port(
     assert config.transport.port == "/dev/serial/by-id/usb-esp32-test"
     assert config.transport.baud_rate == 460800
     assert "port" not in config.sensors["radar"].options
-    assert config.sensors["radar"].enabled is False
+    assert config.sensors["radar"].enabled is True
     assert config.sensors["climate"].sample_rate_hz == 0.5
 
 
