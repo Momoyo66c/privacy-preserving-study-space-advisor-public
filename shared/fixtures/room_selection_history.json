@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "selections": [
+    {
+      "selection_id": "09a8c3f3-3139-440b-a825-49b185a3b152",
+      "room_id": "room_a",
+      "room_name": "Quiet Commons",
+      "source": "recommendation",
+      "recommendation_request_id": "req-demo-001",
+      "recorded_at": "2026-07-22T08:30:00Z",
+      "selected_rank": 1,
+      "selected_score": 88,
+      "evidence": {
+        "quiet_priority": 0.75,
+        "low_occupancy_priority": 0.7
+      }
+    }
+  ],
+  "next_cursor": null
+}

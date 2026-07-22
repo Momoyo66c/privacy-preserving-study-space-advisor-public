@@ -4,6 +4,7 @@ import math
 from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -271,6 +272,19 @@ class RecommendationRequest(StrictModel):
         return values
 
 
+class AuthenticatedRecommendationRequest(StrictModel):
+    schema_version: Literal["1.0"]
+    study_mode: StudyMode
+    candidate_room_ids: list[StableId] = Field(min_length=1, max_length=50)
+
+    @field_validator("candidate_room_ids")
+    @classmethod
+    def unique_candidates(cls, values: list[str]) -> list[str]:
+        if len(set(values)) != len(values):
+            raise ValueError("candidate_room_ids must be unique")
+        return values
+
+
 class RecommendationItem(StrictModel):
     room_id: StableId
     rank: int = Field(ge=1)
@@ -301,3 +315,119 @@ class HealthResponse(StrictModel):
     recommendation_adapter: dict[str, str]
     write_auth: Literal["enabled", "disabled"]
     version: str
+
+
+Username = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9._-]{2,31}$")]
+
+
+class AuthCredentials(StrictModel):
+    schema_version: Literal["1.0"]
+    username: Username
+    password: str = Field(min_length=10, max_length=128)
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def normalize_username(cls, value: object) -> object:
+        return value.strip().lower() if isinstance(value, str) else value
+
+
+class UserResponse(StrictModel):
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    user_id: str
+    username: str
+    created_at: datetime
+
+
+class AuthSessionResponse(StrictModel):
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    user: UserResponse
+    csrf_token: str
+    expires_at: datetime
+
+
+class PreferenceSnapshot(StrictModel):
+    study_mode: StudyMode
+    quiet_priority: FiniteFloat = Field(ge=0, le=1)
+    low_occupancy_priority: FiniteFloat = Field(ge=0, le=1)
+    brightness_priority: FiniteFloat = Field(ge=0, le=1)
+    comfort_priority: FiniteFloat = Field(ge=0, le=1)
+    distance_priority: FiniteFloat = Field(ge=0, le=1)
+    preferred_temperature_c: FiniteFloat | None = Field(default=None, ge=10, le=35)
+
+
+class LearnedPreferenceValues(StrictModel):
+    quiet_priority: FiniteFloat | None = Field(default=None, ge=0, le=1)
+    low_occupancy_priority: FiniteFloat | None = Field(default=None, ge=0, le=1)
+    brightness_priority: FiniteFloat | None = Field(default=None, ge=0, le=1)
+    comfort_priority: FiniteFloat | None = Field(default=None, ge=0, le=1)
+    distance_priority: None = None
+
+
+class PreferenceEvidenceCounts(StrictModel):
+    quiet_priority: int = Field(ge=0)
+    low_occupancy_priority: int = Field(ge=0)
+    brightness_priority: int = Field(ge=0)
+    comfort_priority: int = Field(ge=0)
+    distance_priority: Literal[0] = 0
+
+
+class MePreferenceUpdate(PreferenceSnapshot):
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    learning_enabled: bool = True
+
+
+class MePreferenceResponse(StrictModel):
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    manual: PreferenceSnapshot
+    learned: LearnedPreferenceValues
+    effective: PreferenceSnapshot
+    evidence_counts: PreferenceEvidenceCounts
+    learning_enabled: bool
+    updated_at: datetime
+
+
+class RoomSelectionRequest(StrictModel):
+    schema_version: Literal["1.0"]
+    selection_id: UUID
+    room_id: StableId
+    recommendation_request_id: str | None = Field(default=None, min_length=1, max_length=128)
+    source: Literal["recommendation", "room_detail"]
+
+    @model_validator(mode="after")
+    def recommendation_source_requires_request(self) -> "RoomSelectionRequest":
+        if self.source == "recommendation" and self.recommendation_request_id is None:
+            raise ValueError("recommendation_request_id is required for recommendation selections")
+        return self
+
+
+class RoomSelectionAccepted(StrictModel):
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    accepted: Literal[True] = True
+    selection_id: UUID
+    room_id: StableId
+    recorded_at: datetime
+    effective_preferences: PreferenceSnapshot
+
+
+class RoomSelectionHistoryItem(StrictModel):
+    selection_id: UUID
+    room_id: StableId
+    room_name: str
+    source: Literal["recommendation", "room_detail"]
+    recommendation_request_id: str | None
+    recorded_at: datetime
+    selected_rank: int | None
+    selected_score: int | None
+    evidence: dict[str, float]
+
+
+class RoomSelectionHistoryResponse(StrictModel):
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    selections: list[RoomSelectionHistoryItem]
+    next_cursor: str | None
+
+
+class DeleteResult(StrictModel):
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    deleted: bool = True
+    deleted_count: int = Field(default=0, ge=0)

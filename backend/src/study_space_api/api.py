@@ -45,6 +45,7 @@ from .schemas import (
 )
 from .services.forecasting import DeterministicForecastStrategy
 from .services.history import build_history_points
+from .services.preferences import sanitize_score_breakdown
 
 router = APIRouter()
 logger = logging.getLogger("study_space_api.api")
@@ -291,7 +292,14 @@ def get_forecast(
 
 
 @router.put("/api/v1/preferences/{profile_id}", response_model=PreferenceProfileResponse)
-def put_preference(profile_id: StableId, body: PreferenceBody, session: Session = Depends(get_session)) -> PreferenceProfileResponse:
+def put_preference(
+    profile_id: StableId,
+    body: PreferenceBody,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> PreferenceProfileResponse:
+    if not settings.allow_anonymous_demo:
+        raise APIError(404, "ANONYMOUS_DEMO_DISABLED", "Anonymous demo profiles are disabled")
     now = utcnow()
     repository = PreferenceRepository(session)
     profile = repository.get(profile_id)
@@ -308,7 +316,13 @@ def put_preference(profile_id: StableId, body: PreferenceBody, session: Session 
 
 
 @router.get("/api/v1/preferences/{profile_id}", response_model=PreferenceProfileResponse)
-def get_preference(profile_id: StableId, session: Session = Depends(get_session)) -> PreferenceProfileResponse:
+def get_preference(
+    profile_id: StableId,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> PreferenceProfileResponse:
+    if not settings.allow_anonymous_demo:
+        raise APIError(404, "ANONYMOUS_DEMO_DISABLED", "Anonymous demo profiles are disabled")
     profile = PreferenceRepository(session).get(profile_id)
     if profile is None:
         raise APIError(404, "PROFILE_NOT_FOUND", "Preference profile was not found")
@@ -343,6 +357,8 @@ async def recommendations(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> RecommendationResponse:
+    if not settings.allow_anonymous_demo:
+        raise APIError(404, "ANONYMOUS_DEMO_DISABLED", "Anonymous recommendations are disabled")
     rooms_by_id = {room.id: room for room in RoomRepository(session).list_active()}
     missing = [room_id for room_id in payload.candidate_room_ids if room_id not in rooms_by_id]
     if missing:
@@ -362,6 +378,10 @@ async def recommendations(
     latency_ms = (time.perf_counter() - started) * 1000
     req_id = request_id_for(request)
     response = RecommendationResponse(request_id=req_id, generated_at=now, recommendations=adapter_result.recommendations, warnings=adapter_result.warnings)
+    score_breakdown = sanitize_score_breakdown(
+        adapter_result.score_breakdown,
+        payload.candidate_room_ids,
+    )
     RecommendationRepository(session).add(
         models.RecommendationRecord(
             request_id=req_id,
@@ -369,6 +389,7 @@ async def recommendations(
             generated_at=now,
             candidate_room_ids_json=payload.candidate_room_ids,
             rankings_json=[item.model_dump(mode="json") for item in response.recommendations],
+            score_breakdown_json=score_breakdown or None,
             explanation_source=response.recommendations[0].explanation_source if response.recommendations else "stub",
             adapter_name=adapter_result.adapter_name,
             fallback_reason=fallback_reason,

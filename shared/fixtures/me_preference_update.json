@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "study_mode": "quiet",
+  "quiet_priority": 0.7,
+  "low_occupancy_priority": 0.8,
+  "brightness_priority": 0.4,
+  "comfort_priority": 0.6,
+  "distance_priority": 0.2,
+  "preferred_temperature_c": 24.0,
+  "learning_enabled": true
+}

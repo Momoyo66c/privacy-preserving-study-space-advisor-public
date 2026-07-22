@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0",
+  "manual": {
+    "study_mode": "quiet",
+    "quiet_priority": 0.6,
+    "low_occupancy_priority": 0.6,
+    "brightness_priority": 0.5,
+    "comfort_priority": 0.5,
+    "distance_priority": 0,
+    "preferred_temperature_c": 24
+  },
+  "learned": {
+    "quiet_priority": 0.85,
+    "low_occupancy_priority": null,
+    "brightness_priority": 0.7,
+    "comfort_priority": null,
+    "distance_priority": null
+  },
+  "effective": {
+    "study_mode": "quiet",
+    "quiet_priority": 0.61,
+    "low_occupancy_priority": 0.6,
+    "brightness_priority": 0.504,
+    "comfort_priority": 0.5,
+    "distance_priority": 0,
+    "preferred_temperature_c": 24
+  },
+  "evidence_counts": {
+    "quiet_priority": 2,
+    "low_occupancy_priority": 0,
+    "brightness_priority": 1,
+    "comfort_priority": 0,
+    "distance_priority": 0
+  },
+  "learning_enabled": true,
+  "updated_at": "2026-07-20T09:15:00Z"
+}

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MePreferenceResponse",
+  "$defs": {
+    "preference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "study_mode": {"type": "string", "enum": ["quiet", "discussion", "any"]},
+        "quiet_priority": {"type": "number", "minimum": 0, "maximum": 1},
+        "low_occupancy_priority": {"type": "number", "minimum": 0, "maximum": 1},
+        "brightness_priority": {"type": "number", "minimum": 0, "maximum": 1},
+        "comfort_priority": {"type": "number", "minimum": 0, "maximum": 1},
+        "distance_priority": {"type": "number", "minimum": 0, "maximum": 1},
+        "preferred_temperature_c": {
+          "type": ["number", "null"],
+          "minimum": 10,
+          "maximum": 35
+        }
+      },
+      "required": [
+        "study_mode",
+        "quiet_priority",
+        "low_occupancy_priority",
+        "brightness_priority",
+        "comfort_priority",
+        "distance_priority",
+        "preferred_temperature_c"
+      ]
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "string", "const": "1.0"},
+    "manual": {"$ref": "#/$defs/preference"},
+    "learned": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "quiet_priority": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "low_occupancy_priority": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "brightness_priority": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "comfort_priority": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "distance_priority": {"type": "null"}
+      },
+      "required": [
+        "quiet_priority",
+        "low_occupancy_priority",
+        "brightness_priority",
+        "comfort_priority",
+        "distance_priority"
+      ]
+    },
+    "effective": {"$ref": "#/$defs/preference"},
+    "evidence_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "quiet_priority": {"type": "integer", "minimum": 0},
+        "low_occupancy_priority": {"type": "integer", "minimum": 0},
+        "brightness_priority": {"type": "integer", "minimum": 0},
+        "comfort_priority": {"type": "integer", "minimum": 0},
+        "distance_priority": {"type": "integer", "const": 0}
+      },
+      "required": [
+        "quiet_priority",
+        "low_occupancy_priority",
+        "brightness_priority",
+        "comfort_priority",
+        "distance_priority"
+      ]
+    },
+    "learning_enabled": {"type": "boolean"},
+    "updated_at": {"type": "string", "format": "date-time"}
+  },
+  "required": [
+    "schema_version",
+    "manual",
+    "learned",
+    "effective",
+    "evidence_counts",
+    "learning_enabled",
+    "updated_at"
+  ]
+}
