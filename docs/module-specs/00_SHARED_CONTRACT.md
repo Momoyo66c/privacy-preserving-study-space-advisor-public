@@ -6,7 +6,9 @@
 
 ## 2. 项目目标
 
-构建一个运行在 Raspberry Pi 5 和本地/轻量后端上的隐私保护型学习空间推荐系统。系统融合 MLX90640 低分辨率热阵列、HLK-LD2450 mmWave 雷达、声音强度、光照、温湿度等信号，在边缘端判断空间状态；后端保存历史并预测短期占用趋势；推荐层结合用户偏好对房间排序，并用自然语言解释结果。
+构建一个运行在 Raspberry Pi 5 和本地/轻量后端上的隐私保护型学习空间推荐系统。最终实物基线融合 MLX90640 低分辨率热阵列、声音强度、光照和温湿度信号，在边缘端判断空间状态；后端保存历史并预测短期占用趋势；推荐层结合用户偏好对房间排序，并用自然语言解释结果。
+
+2026-07-22 的最终硬件决策不再安装 HLK-LD2450。为保持 `schema_version=1.0` 与既有模块兼容，`radar` 字段、模拟数据和可选驱动仍保留；生产窗口必须输出 `radar.health=not_configured`、`sample_count=0` 和空 `tracks`，且未配置雷达不计入完整度分母。
 
 ## 3. 强制隐私原则
 
@@ -281,6 +283,7 @@ PUT /api/v1/edge/rooms/{room_id}/thermal-preview
 - `sensor_window_discussion.json`
 - `sensor_window_crowded.json`
 - `sensor_window_degraded.json`
+- `sensor_window_real_four_sensor.json`
 - `edge_observation_valid.json`
 - `edge_observation_unknown.json`
 - `recommendation_request.json`
@@ -297,7 +300,7 @@ JSON Schema 放在 `shared/contracts/`，CI 中必须校验示例负载。
 
 ### Gate B：真实传感器贯通
 
-至少 MLX90640、LD2450 和一个环境/声音传感器使用真实硬件运行；其他传感器可以明确标记为 degraded，但不得静默伪造。
+最终四传感器基线中，MLX90640、声音强度、光照和温湿度必须使用真实硬件运行。未安装的雷达必须标记为 `not_configured`，不得静默伪造零目标或模拟轨迹。
 
 ### Gate C：推荐与降级
 

@@ -1,6 +1,6 @@
 # ESP32 Sensor Hub 串口协议
 
-本文是 ESP32 固件实现者和 Raspberry Pi 驱动维护者使用的协议参考。ESP32 Sensor Hub 通过一条 USB 串口复用热阵列、雷达、声音统计、光照和温湿度样本。Raspberry Pi 将这些本地消息转换为现有 `SensorDriver` 样本；模块 1 的窗口格式和跨模块契约不变。
+本文是 ESP32 固件实现者和 Raspberry Pi 驱动维护者使用的协议参考。ESP32 Sensor Hub 通过一条 USB 串口复用热阵列、声音统计、光照和温湿度样本。协议仍保留可选雷达消息，供兼容测试或未来扩展使用；最终四传感器生产固件不启用雷达。Raspberry Pi 将本地消息转换为现有 `SensorDriver` 样本；模块 1 的窗口格式和跨模块契约不变。
 
 ## 适用边界
 
@@ -36,7 +36,7 @@
 | `0x01` | `HEARTBEAT` | `uint32 capability_mask`、`uint32 dropped_samples` |
 | `0x02` | `HEALTH` | `uint8 sensor_type`、`uint8 status`、`uint16 error_code`、`uint32 event_count` |
 | `0x10` | `THERMAL` | `uint8 width`、`uint8 height`、随后为 `width*height` 个 `int16` 摄氏度百分值 |
-| `0x11` | `RADAR` | 一份完整的 30 字节 LD2450 上报帧 |
+| `0x11` | `RADAR` | 可选兼容消息：一份完整的 30 字节 LD2450 上报帧；生产禁用 |
 | `0x12` | `SOUND` | `float32 rms`、`float32 std`、`float32 peak`、`uint16 chunk_frames` |
 | `0x13` | `LIGHT` | `uint16 adc_raw`、`float32 normalized`、`float32 calibrated_lux`、`uint8 flags` |
 | `0x14` | `CLIMATE` | `float32 temperature_c`、`float32 humidity_pct` |
@@ -56,7 +56,7 @@ MLX90640 必须发送 `width=32`、`height=24` 和恰好 768 个温度值。每�
 
 ### 雷达
 
-ESP32 只对 LD2450 的 30 字节上报帧做边界检查，不改变字段，不插入日志。Raspberry Pi 继续使用现有 LD2450 解析器完成目标字段验证和窗口内匿名化。
+该消息只属于可选兼容路径。启用时，ESP32 只对 LD2450 的 30 字节上报帧做边界检查，不改变字段，不插入日志；Raspberry Pi 使用现有解析器完成目标字段验证和窗口内匿名化。最终生产配置禁用此能力，窗口应输出 `radar.health=not_configured`、0 样本和空轨迹。
 
 ### 声音
 

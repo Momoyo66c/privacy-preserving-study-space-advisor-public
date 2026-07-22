@@ -1,12 +1,12 @@
 # 模块 1：传感器与边缘硬件
 
-本模块在 Raspberry Pi 5 或普通开发电脑上采集并编排热阵列、毫米波雷达、声音强度、光照和温湿度数据。每个 5 至 10 秒窗口都会转换为共享 `sensor_window` 契约，供模块 2 直接读取。
+本模块在 Raspberry Pi 5 或普通开发电脑上采集并编排热阵列、声音强度、光照和温湿度数据。每个 5 至 10 秒窗口都会转换为共享 `sensor_window` 契约，供模块 2 直接读取。最终生产基线不安装 LD2450，契约中的 `radar` 保留为兼容字段并输出 `not_configured`。
 
 模块遵守以下隐私边界：
 
 - 不采集 RGB 图像。
 - 声音只在内存中计算 RMS、标准差和峰值，不保存 WAV、PCM 或其他原始音频。
-- 雷达目标 ID 只在当前窗口内有效，不用于跨窗口追踪。
+- 可选雷达兼容驱动的目标 ID 只在当前窗口内有效，不用于跨窗口追踪。
 - 完整热阵列只允许写入本地离线训练会话，不进入普通后端负载或日志。
 - 缺失数据使用 `health`、`warnings` 和 `null` 表达，不用正常数值伪装。
 
@@ -38,7 +38,7 @@ python scripts/run_simulator.py \
 |---|---|
 | 驱动接口 | `SensorDriver` Protocol 与带重试、健康状态、幂等关闭的基类 |
 | 热阵列 | MLX90640 32 × 24 帧读取、长度/NaN/温度范围校验 |
-| 雷达 | HLK-LD2450 串口帧同步、包长校验、目标位置与速度解析 |
+| 雷达兼容 | HLK-LD2450 解析器和模拟测试保留；生产配置禁用，不安装实物 |
 | 声音 | 短时内存缓冲区的 RMS、标准差和峰值统计 |
 | 环境 | 直连 BH1750/AHTx0；Sensor Hub 模式支持 HW-486 未标定代理与 DHT11 |
 | 窗口 | 非重叠 5–10 秒窗口、样本计数、完整度和降级警告 |
@@ -74,8 +74,8 @@ edge/hardware/
 ## 配置
 
 `config/example.yaml` 默认启用模拟器，适合开发和 CI。`config/real.example.yaml`
-保留 Raspberry Pi 直连兼容模式；当前实物使用 `config/esp32-hub.example.yaml`，
-由 ESP32 汇聚 MLX90640、HW-485、HW-486 和 DHT11。
+保留 Raspberry Pi 四传感器直连兼容模式；当前实物使用 `config/esp32-hub.example.yaml`，
+由 ESP32 汇聚 MLX90640、HW-485、HW-486 和 DHT11。两份真实配置都明确设置 `radar.enabled=false`。
 
 所有采集类 CLI 都要求显式传入 `--config`。这样从 wheel 安装后不会依赖源码目录中的隐式路径，也能在日志和复现实验时明确记录所用配置。
 
@@ -117,7 +117,6 @@ edge/hardware/
 | MLX90640 | 3.3V、GND、SDA/BCM2、SCL/BCM3 | I2C，常见地址 `0x33`（YAML 十进制为 `51`） |
 | BH1750 | 3.3V、GND、SDA/BCM2、SCL/BCM3 | 与 MLX90640 共用 I2C 总线 |
 | AHT20/AHTx0 | 3.3V、GND、SDA/BCM2、SCL/BCM3 | 与其他 I2C 设备地址不得冲突 |
-| HLK-LD2450 | 5V/GND 与 USB-TTL 串口 | 使用 3.3V 逻辑兼容的 USB-TTL，默认 256000 baud |
 | USB 麦克风 | USB | 驱动只读取短缓冲区并立即统计 |
 | 共阴 RGB LED | BCM17/27/22 经限流电阻连接 R/G/B，公共端接 GND | GPIO 编号可在 `actuation.options` 中修改 |
 
@@ -143,14 +142,7 @@ export ESP32_HUB_PORT=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
 python scripts/probe_sensors.py --config config/esp32-hub.example.yaml
 ```
 
-上面是当前生产连接。只有使用保留的 Raspberry Pi 直连模式时，才执行：
-
-```bash
-export RADAR_PORT=/dev/serial/by-id/REPLACE_WITH_LD2450_USB_TTL_DEVICE
-python scripts/probe_sensors.py --config config/real.example.yaml
-```
-
-`RADAR_PORT` 必须显式设置为 LD2450 独立 USB-TTL 的稳定设备路径。不要把当前属于 ESP32 的 `/dev/ttyUSB0` 填入该变量；无法确认设备身份时先停止探测并检查 `ls -l /dev/serial/by-id/`。
+上面是当前生产连接。保留的 Raspberry Pi 直连模式使用 `config/real.example.yaml`，同样不要设置 `RADAR_PORT`。
 
 在 64 位 Raspberry Pi OS 上，`hardware` extra 会同时安装 Pi 5 所需的
 `lgpio` 后端。安装后可先运行 `python -c "import board, lgpio"`，确认
@@ -194,7 +186,7 @@ ssh -N -L 8765:127.0.0.1:8765 \
 
 仓库提供最小 ESP32 串口烟雾固件，用于确认树莓派能够识别、编译、烧录和读取开发板。固件不采集传感器数据，也不连接网络。操作命令和成功输出见 [`firmware/README.md`](firmware/README.md)。
 
-烧录前必须读取芯片型号，并核对 `/dev/serial/by-id/`。`/dev/ttyUSB0` 只是动态设备名，不代表它一定是 LD2450。ESP32 与 LD2450 同时接入时应使用两个独立串口，并通过 `RADAR_PORT` 给出雷达对应的稳定设备路径。
+烧录前必须读取芯片型号，并核对 `/dev/serial/by-id/`。`/dev/ttyUSB0` 只是动态设备名，不能代替芯片和稳定路径校验。
 
 ## 离线采集
 
@@ -210,7 +202,7 @@ python scripts/collect_session.py \
   --known-anomaly "thermal sensor warm-up dropped one frame"
 ```
 
-真实采集时改用 `config/real.example.yaml` 并加入 `--realtime`。输出结构：
+真实 ESP32 Hub 采集时改用 `config/esp32-hub.example.yaml` 并加入 `--realtime`。输出结构：
 
 ```text
 data/sessions/<session_id>/
@@ -258,12 +250,12 @@ JSON Schema 位于 `../../shared/contracts/sensor_window.schema.json`，示例�
 默认 5 秒窗口的期望样本数为：
 
 - 热阵列：10 帧（2 Hz）
-- 雷达：50 个串口样本（10 Hz）
+- 雷达：未配置，0 样本；共享字段固定输出 `not_configured`
 - 声音：20 个统计样本（4 Hz）
 - 光照：5 个样本（1 Hz）
 - 温湿度：5 个样本（1 Hz）
 
-`quality.completeness` 是所有已启用传感器有效样本数与期望样本数之比，范围为 0–1。单个传感器故障不会中止窗口；窗口会携带 degraded/offline 健康状态与警告。雷达目标会被重新命名为窗口局部 ID，例如 `target-8f10aa32-1`。
+`quality.completeness` 是所有已启用传感器有效样本数与期望样本数之比，范围为 0–1。未配置的雷达不计入分母。单个传感器故障不会中止窗口；热阵列在无雷达备援时离线，窗口会明确标记不可用于正常推理。兼容驱动产生的雷达目标仍使用窗口局部 ID。
 
 ## 状态输出
 
@@ -300,10 +292,11 @@ edge/hardware/.venv/bin/python -m compileall -q \
 
 `.github/workflows/module1-ci.yml` 使用单个顺序作业执行完整测试、80% 总覆盖率门禁、编译检查和 wheel 构建。
 
-自动化测试不依赖物理传感器；此外，当前四个实物传感器已完成基础探测和
-五秒窗口验收。真实硬件的 10 分钟连续会话、LD2450 和高帧率阶梯仍需在
-Raspberry Pi 上执行，记录见 `HARDWARE_SMOKE_TEST.md`。仓库不以模拟结果替代
-这些待执行指标。
+自动化测试不依赖物理传感器。最终四传感器固件已在
+ESP32-D0WD-V3 上烧录，并在 Raspberry Pi 5 完成 120 个五秒窗口的
+10 分钟真实会话。会话整包验收为 `valid=true`，雷达在全部窗口中为
+`not_configured`。`smooth` 和 `live_max` 是保留的实验档，不是最终
+`analytics` 生产基线的验收阻塞项。详细证据见 `HARDWARE_SMOKE_TEST.md`。
 
 ## 常见问题
 
@@ -311,9 +304,9 @@ Raspberry Pi 上执行，记录见 `HARDWARE_SMOKE_TEST.md`。仓库不以模拟
 
 检查 I2C 是否启用、供电是否为 3.3V、SDA/SCL 是否接反，以及 `i2cdetect -y 1` 是否显示 `0x33`。总线不稳定时把 `i2c_frequency_hz` 从 800000 降到 400000。
 
-**LD2450 一直 offline**
+**雷达显示 `not_configured`**
 
-确认 `RADAR_PORT` 指向 LD2450 独立 USB-TTL 的稳定设备路径，并检查权限与 256000 baud。不要仅凭 `/dev/ttyUSB0` 这类动态名称识别设备。损坏或截断的数据包会被跳过，后续有效帧仍可重新同步。
+这是最终四传感器生产配置的预期状态，不是故障。不要添加 `RADAR_PORT`，也不要用零目标或模拟轨迹改写该状态。
 
 **声音驱动无法启动**
 

@@ -1,6 +1,6 @@
 # ESP32 Sensor Hub 固件
 
-本固件针对已确认的 WeMos D1 R32 和五个传感器模块：MLX90640、HLK-LD2450、HW-507/DHT11、HW-485 声音模块、HW-486 光敏模块。ESP32 作为本地采集端，同时保持 Raspberry Pi 之后的 `SensorDriver`、窗口聚合和跨模块 Schema 不变。ESP32 不联网、不保存数据、不输出文本日志；声音只上传统计值，不上传 ADC 原始序列。
+本固件针对已确认的 WeMos D1 R32 和四个最终生产传感器：MLX90640、HW-507/DHT11、HW-485 声音模块、HW-486 光敏模块。ESP32 作为本地采集端，同时保持 Raspberry Pi 之后的 `SensorDriver`、窗口聚合和跨模块 Schema 不变。ESP32 不联网、不保存数据、不输出文本日志；声音只上传统计值，不上传 ADC 原始序列。LD2450 UART 兼容代码仍保留，但生产开关固定为关闭。
 
 ## 接线
 
@@ -12,14 +12,13 @@
 | HW-507/DHT11 | S | GPIO27 | `+` 接 3V3，`-` 接 GND；单总线，不是普通数字电平 |
 | HW-485 | AO | 经 10 kΩ/10 kΩ 分压后接 GPIO34 | 模块 `+` 接 5V、`G` 接 GND；`DO` 不连接 |
 | HW-486 | S | GPIO35 | `+` 接 3V3、`-` 接 GND；输出是未标定 ADC 代理值 |
-| LD2450 | TX / RX | GPIO16 RX2 / GPIO17 TX2 | TX/RX 交叉连接；5V 供电、GND 共地、256000 8N1 |
 | Raspberry Pi | USB | ESP32 USB 口 | Hub 协议 `460800 8N1`；不需要额外 USB-TTL |
 
 HW-485 使用 5 V 供电时，AO 必须先经过 10 kΩ/10 kΩ 分压，不能把 AO 或 DO 直接接入 ESP32。ADC attenuation 不是过压保护。MLX90640 当前按 3.3 V 供电；首次上电前还要确认 breakout 上拉电阻没有接到 5 V。所有模块必须共地。
 
 ## 固件配置
 
-引脚、采样频率和功能开关集中在 `sensor_hub_config.h`。当前默认启用五个传感器。DHT11 每 2 秒读取一次；LD2450 使用 UART2 的 256000 8N1 数据流；HW-485 在 ESP32 RAM 中短时采样后只发送归一化 RMS、标准差和峰值，该实物批次的 AO 静音基线接近 0，因此全零窗口按有效静音上报；HW-486 发送 ADC 原始计数和归一化代理值。
+引脚、采样频率和功能开关集中在 `sensor_hub_config.h`。当前默认启用四个生产传感器，`kEnableRadar=false`。DHT11 每 2 秒读取一次；HW-485 在 ESP32 RAM 中短时采样后只发送归一化 RMS、标准差和峰值，该实物批次的 AO 静音基线接近 0，因此全零窗口按有效静音上报；HW-486 发送 ADC 原始计数和归一化代理值。
 
 HW-485 的模拟引脚无法仅凭静音电平区分“正常安静”和“信号线接地/断开”。首次部署必须做一次有声响应试验；本项目实物已用临时聚合诊断确认，静音窗口为 0，制造声音时 GPIO34 峰值会上升。生产固件不传输原始 ADC 序列。
 
@@ -58,7 +57,7 @@ arduino-cli compile --profile esp32_sensor_hub \
 
 MLX90640 初始化和 EEPROM 校准读取始终保持 400 kHz；只有初始化成功后，
 高帧率档位才切换到 1 MHz。编译期带宽门禁按最坏 1566 字节热帧计算，
-限制热流最多占 UART 理论容量的 80%，为声音、光照、温湿度、心跳和雷达
+限制热流最多占 UART 理论容量的 80%，为声音、光照、温湿度和心跳
 保留空间。不安全或未知档位会直接编译失败。
 
 HW-486 不是照度计。在使用参考照度计完成标定前，Pi 端固定输出 `light_lux=null`、`calibrated_lux=false` 和 `hw486_uncalibrated_light_proxy` 警告，不能把 ADC 数值写成 lux。遮挡/照射试验还需确认数值方向。

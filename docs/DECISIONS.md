@@ -66,7 +66,7 @@
 ## D-010：真实雷达端口必须显式指定
 
 - 日期：2026-07-18
-- 状态：生效
+- 状态：已由 D-027 取代
 - 决策：`config/real.example.yaml` 从 `RADAR_PORT` 读取 LD2450 串口，未设置时拒绝加载；优先使用 `/dev/serial/by-id/` 稳定路径。模拟配置使用明确的未使用占位值。
 - 原因：当前 `/dev/ttyUSB0` 属于 ESP32，动态设备名会随插拔变化。硬编码该路径可能把错误设备当成雷达读取，也违反示例配置不得包含机器专用路径的要求。
 
@@ -126,7 +126,7 @@
 
 - 日期：2026-07-20
 - 状态：生效
-- 硬件：控制板为 WeMos D1 R32。HW-507/DHT11 数据接 GPIO27；HW-485 AO 经 10 kΩ/10 kΩ 分压接 GPIO34；HW-486 S 接 GPIO35；MLX90640 SDA/SCL 接 GPIO21/22。所有模块共地。LD2450 在到货前保持关闭。
+- 硬件：控制板为 WeMos D1 R32。HW-507/DHT11 数据接 GPIO27；HW-485 AO 经 10 kΩ/10 kΩ 分压接 GPIO34；HW-486 S 接 GPIO35；MLX90640 SDA/SCL 接 GPIO21/22。所有模块共地。最终基线不安装 LD2450。
 - 决策：以 DHT11 替代 AHTX0，以 HW-485 ADC 相对统计替代 I2S 声音，以 HW-486 ADC 代理值替代 BH1750 lux；MLX90640 热帧格式不变。DHT11 读取间隔固定为 2 秒，HW-485 原始 ADC 只短暂存在 RAM，串口仍只传 RMS、标准差和峰值。
 - 光照语义：HW-486 未标定时必须产生 `light_lux=null`、`calibrated_lux=false` 和 `hw486_uncalibrated_light_proxy`。协议保留显式标定标志，只有该标志有效时才接受 lux。
 - 兼容性：`LIGHT` 负载从单个 lux 浮点改为 ADC、归一化值、可选标定 lux 和 flags，因此协议版本从 1 升为 2；v2 主机必须拒绝 v1 帧，固件和 Pi 适配器必须成对部署。
@@ -192,7 +192,17 @@
 ## D-026：LD2450 通过 ESP32 UART2 接入生产 Hub
 
 - 日期：2026-07-22
-- 状态：已烧录，待修正物理 UART 链路
+- 状态：已由 D-027 取代，不继续实物接入
 - 决策：LD2450 使用 5 V 供电并与 ESP32 共地，雷达 TX 接 GPIO16/RX2、雷达 RX 接 GPIO17/TX2，串口固定为 256000 8N1。ESP32 只验证并转发完整 30 字节上报帧；Pi 保留既有字段解析和窗口内匿名化。
 - 边界：不使用黑色细间距调试口的 PA9、DP、DM 等引脚；能力位只能在收到有效雷达数据后置位。有效雷达帧和五传感器完整实测前不声明 Gate B 完成。
 - 验证：2026-07-22 固定工具链编译和 ESP32-D0WD-V3 写后哈希通过。首轮能力掩码为 29，radar 位未置位；因此保持 degraded 并优先检查 5V/GND/TX/RX，不用软件伪造在线。
+
+## D-027：最终生产基线移除 LD2450
+
+- 日期：2026-07-22
+- 状态：生效
+- 决策：最终实物只包含 MLX90640、HW-485、HW-486 和 DHT11。`config/esp32-hub.example.yaml`、`config/real.example.yaml` 和 ESP32 生产固件均禁用 radar，不再读取 `RADAR_PORT`。
+- 兼容性：不删除 `schema_version=1.0` 的 `radar` 字段、模拟器、LD2450 解析器或 Hub 适配器。生产窗口固定输出 `health=not_configured`、0 样本和空轨迹；未配置雷达不计入完整度。
+- 安全边界：热阵列 offline 且雷达 `not_configured` 时，窗口必须输出 `not_inference_ready:thermal_offline_without_radar`。不允许用零目标或模拟轨迹伪装真实雷达。
+- 验证：最终固件 Flash 336,072 bytes、全局内存 39,092 bytes，写后哈希通过。四项基础探测正常；10 分钟真实会话 120 窗口、`valid=true`、雷达全部 `not_configured`、媒体文件 0，结束后立即重启成功。
+- 收尾边界：`smooth` 和 `live_max` 保留为实验档，不是最终 `analytics` 生产基线的验收阻塞项。

@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "window_id": "room_a-20260722T063110.988Z",
+  "room_id": "room_a",
+  "device_id": "pi5-a",
+  "window_start": "2026-07-22T06:31:10Z",
+  "window_end": "2026-07-22T06:31:15Z",
+  "thermal": {
+    "health": "ok",
+    "frame_count": 10
+  },
+  "radar": {
+    "health": "not_configured",
+    "sample_count": 0,
+    "tracks": []
+  },
+  "sound": {
+    "health": "ok",
+    "rms_mean": 0.0,
+    "rms_std": 0.0,
+    "peak": 0.0
+  },
+  "environment": {
+    "light_lux": null,
+    "temperature_c": 21.700000762939453,
+    "humidity_pct": 63.900001525878906
+  },
+  "quality": {
+    "completeness": 0.972973,
+    "warnings": [
+      "hw486_uncalibrated_light_proxy",
+      "sound:received_19_of_20"
+    ]
+  }
+}
