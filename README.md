@@ -1,97 +1,162 @@
 # Privacy-Preserving Study Space Advisor
 
-面向校园学习空间的隐私保护型 AIoT 推荐系统。Raspberry Pi 5 融合低分辨率热阵列、mmWave 雷达、声音强度、光照和温湿度信号，在本地判断房间状态；后端保存历史并预测短期占用；推荐层结合用户偏好生成房间排序和解释。
+[![Gate A integration](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/gate-a-ci.yml/badge.svg)](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/gate-a-ci.yml)
+[![Backend CI](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/backend-ci.yml)
+[![Module 1 CI](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/module1-ci.yml/badge.svg)](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/module1-ci.yml)
 
-> 当前阶段：保留四模块规格，按采集/边缘、服务/数据、展示三层代码骨架串行维护。当前只核验参考源码、许可证和骨架，不提前实现完整 ML、LLM 或 Dashboard。
+面向校园学习空间的隐私保护型 AIoT 推荐系统。边缘设备把低分辨率热阵列、声音强度、光照和温湿度等信号转换为不包含身份信息的房间状态摘要；后端负责状态、历史、短期预测、登录会话、选择记录和偏好学习；Dashboard 展示房间状态、推荐、趋势和隐私说明。
 
-## 隐私原则
+> 状态快照（2026-07-22）：远端 `main` 为 `ba5802e`。Module 1 基础采集、Module 2 规则基线、Module 3 后端、Module 4 Dashboard 和 Gate A 已进入主线。该提交上的 Gate A、Module 1、Backend 和仓库文档检查均已通过。
 
-- 不使用 RGB 摄像头、面部识别或身份追踪。
-- 不保存原始语音，只处理声音强度和统计特征。
-- 热阵列用于整体占用和活动估计，不用于人员识别。
-- LLM 只接收结构化状态、预测和匿名偏好，不接收原始传感器数据。
-
-## 目标系统架构
+## 当前系统链路
 
 ```mermaid
 flowchart LR
-    S["模块 1：传感器与边缘硬件"] --> M["模块 2：数据与边缘 ML"]
-    M -->|"EdgeObservation"| B["模块 3：后端与数据智能"]
-    B -->|"状态、历史、预测"| R["模块 4：推荐与前端"]
-    R -->|"推荐与解释"| U["Dashboard 用户"]
-    M -->|"分类状态"| A["LED / micro:bit"]
+    H["Module 1：模拟器 / 当前 Pi 直连驱动"] -->|"SensorWindow 1.0"| M["Module 2：校验、特征与规则基线"]
+    M -->|"EdgeObservation 1.0"| B["Module 3：FastAPI、SQLite、状态与预测"]
+    B -->|"真实 API"| D["Module 4：React Dashboard"]
+    B --> S["当前确定性 recommendation stub"]
+    S --> D
 ```
 
-## 四个模块
+Gate A 已证明这条模拟链路可以从 Module 1 连续运行到真实后端和浏览器。最终四传感器硬件链路与正式推荐算法仍分别属于 Gate B 和 Gate C。
 
-| 模块 | 代码目录 | 执行规格 | 主要交付 |
+## 模块完成情况
+
+| 模块 | 目录 | 已进入 `main` 的能力 | 仍需完成 |
 |---|---|---|---|
-| 1. 传感器与边缘硬件 | `edge/hardware/` | [`01_SENSOR_EDGE_HARDWARE.md`](docs/module-specs/01_SENSOR_EDGE_HARDWARE.md) | 采集、窗口化、模拟器、本地指示 |
-| 2. 数据与边缘 ML | `edge/ml/` | [`02_EDGE_ML_PIPELINE.md`](docs/module-specs/02_EDGE_ML_PIPELINE.md) | 特征、训练、模型包、Pi 推理 |
-| 3. 后端与数据智能 | `backend/` | [`03_BACKEND_DATA_INTELLIGENCE.md`](docs/module-specs/03_BACKEND_DATA_INTELLIGENCE.md) | API、数据库、历史与预测 |
-| 4. 推荐与前端 | `frontend/` 及后端推荐适配层 | [`04_RECOMMENDATION_FRONTEND.md`](docs/module-specs/04_RECOMMENDATION_FRONTEND.md) | 排序、LLM fallback、Dashboard |
+| Module 1：传感器与边缘硬件 | `edge/hardware/` | 统一驱动接口、MLX90640/LD2450/声音/环境驱动、确定性模拟器、窗口化、会话采集与校验、本地状态输出，CI 通过 | 将 ESP32 + MLX90640/HW-485/HW-486/HW-507 分支整理为新 PR；同步最终无雷达硬件契约；完成标定和 Raspberry Pi 现场 smoke |
+| Module 2：边缘 ML | `edge/ml/` | `SensorWindow` 校验、特征提取、确定性规则模型、`EdgeObservation` 生成与后端上传 CLI | 合并或移除根目录第二套 `ml/`；补无雷达实时热特征；用真实标签完成训练、独立评估、Model Card 和 Pi benchmark；增加专用 CI |
+| Module 3：后端与数据智能 | `backend/` | FastAPI、SQLite/Alembic、Observation 幂等写入、状态/历史/15–30 分钟预测、热图 TTL、认证、选择记录、偏好学习、清理/seed/backtest、Docker 和后端 CI | 生产部署、安全加固和外部数据库不在当前原型范围；正式推荐算法仍由 Module 4 提供 |
+| Module 4：推荐与前端 | `frontend/` 与后端 adapter 边界 | React/Vite Dashboard、mock/真实 API、注册登录、手动偏好、显式选择教室、学生/演示管理视图、组件和 Playwright 测试 | 后端仍使用 `StubRecommendationAdapter`；需实现正式规则评分、模板/LLM 降级；补选择历史、学习开关/重置、删除账号和失败 outbox 等完整 UI |
 
-所有实现者必须先阅读 [`00_SHARED_CONTRACT.md`](docs/module-specs/00_SHARED_CONTRACT.md)。
+注意：当前规则模型和 recommendation stub 只用于集成与演示，不能作为真实环境下的分类准确率或正式个性化推荐效果声明。
 
-## 三层代码骨架
+## 集成门禁
 
-四个业务模块不需要改名或搬迁；它们在代码层面归入以下三层：
-
-| 层 | 目录 | 当前边界 |
+| 门禁 | 目标 | 当前状态 |
 |---|---|---|
-| 采集与边缘层 | `edge/hardware/`、`edge/ml/` | 模块 01 保留已实现的驱动、采集和本地指示；模块 02 当前只保留入口骨架 |
-| 服务与数据层 | `backend/`、`shared/` | 保留现有后端成果与共享契约，本阶段不扩展预测或大模型能力 |
-| 展示层 | `frontend/` | 当前只保留模块入口说明，不开发 Dashboard |
+| Gate A — 模拟数据贯通 | Module 1 模拟窗口 → Module 2 → Module 3 → Dashboard | **已完成并进入 CI**；Python 集成测试和真实 API Playwright E2E 均通过 |
+| Gate B — 真实传感器贯通 | 最终四传感器持续产生有效窗口并完成边缘推理 | **未完成**；四传感器更新仍在分支，尚未基于最新 `main` 形成新 PR 和现场验收记录 |
+| Gate C — 推荐与降级 | 三个房间由正式规则确定排序，LLM/单传感器故障不阻断核心流程 | **未完成**；Dashboard 已有，但正式 Module 4 adapter、模板解释和 LLM provider 尚未实现 |
+| Gate D — 最终演示 | 连续运行至少 15 分钟并展示状态、趋势、预测、偏好变化、推荐和本地指示 | **未完成**；依赖 Gate B、Gate C 和现场记录 |
 
-`tests/integration/` 是跨层验证入口，不属于任一业务层。各层之间只能通过 `shared/contracts/` 中的契约交换数据。
+Gate A 的实现与限制见 [`tests/integration/GATE_A_HANDOFF.md`](tests/integration/GATE_A_HANDOFF.md)。
 
-## 从这里开始
+## 隐私边界
 
-完整的安装、分支、AI 使用、开发和集成教学见：
+- 不使用 RGB 摄像头、面部识别、身份追踪或个人画像。
+- 不保存或上传原始语音；声音模块只输出 RMS、标准差、峰值等强度统计。
+- 完整热帧只允许在本地离线会话中短期使用；后端 Observation、推荐上下文和日志不得包含完整热阵列。
+- 浏览器热图仅为短时、归一化的 32 × 24 预览，后端不持久化。
+- 登录账号不收集姓名、邮箱或学号；密码使用 Argon2id，数据库只保存会话令牌哈希。
+- LLM 未来只能润色已经确定的结构化理由，不能更改排名，也不能接收原始传感器或身份数据。
 
-**[项目使用与协作教程](docs/USAGE_GUIDE.md)**
+## 快速验证 Gate A
 
-快速流程：
+需要 Python 3.11、Node.js 22，以及首次运行时安装 Playwright Chromium。
 
 ```bash
-git clone <repository-url>
-cd Privacy-Preserving-Study-Space-Advisor
-git switch -c module1/hardware
+python -m pip install -e './edge/hardware' -e './edge/ml[dev,thermal]' -e './backend[dev]'
+python -m pytest -q tests/integration/test_gate_a.py
+
+cd frontend
+npm ci
+npx playwright install chromium
+npm run gate-a:e2e
 ```
 
-然后把共享契约和对应模块规格一起交给 AI，要求它先检查仓库、给出计划，再在模块目录内实现并运行测试。
+浏览器测试会启动临时 SQLite 后端和 Vite，不会写入项目数据库，也不需要真实传感器、边缘令牌或 LLM Key。
+
+## 分模块运行
+
+Module 1 模拟器：
+
+```bash
+python -m pip install -e './edge/hardware[dev]'
+python edge/hardware/scripts/run_simulator.py \
+  --config edge/hardware/config/example.yaml \
+  --scenario quiet_study_recommended \
+  --windows 2
+```
+
+Module 2 处理共享 fixture：
+
+```bash
+python -m pip install -e './edge/ml[dev,thermal]'
+study-space-ml-predict-window shared/fixtures/sensor_window_quiet.json \
+  --out edge_observation.json
+```
+
+Module 3 后端：
+
+```bash
+cd backend
+python -m pip install -e '.[dev]'
+alembic upgrade head
+study-space-api seed-demo --reset
+uvicorn study_space_api.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Module 4 Dashboard：
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+前端默认使用 mock 模式。连接真实后端时，在 `frontend/.env` 中设置：
+
+```text
+VITE_API_MODE=real
+VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_REFRESH_SECONDS=10
+```
+
+后端 OpenAPI 位于 `http://127.0.0.1:8000/docs`，前端默认位于 `http://127.0.0.1:5173`。具体环境变量、迁移、seed、硬件依赖和故障排查请阅读各模块 README。
 
 ## 仓库结构
 
 ```text
 .
 |-- edge/
-|   |-- hardware/          # 模块 1
-|   `-- ml/                # 模块 2
-|-- backend/               # 模块 3；模块 4 的推荐 adapter 在此集成
-|-- frontend/              # 模块 4
+|   |-- hardware/          # Module 1
+|   `-- ml/                # Module 2 的规范实现
+|-- ml/                    # 待迁移/移除的第二套 Module 2 实现
+|-- backend/               # Module 3；Module 4 adapter 在此注入
+|-- frontend/              # Module 4 Dashboard
 |-- shared/
-|   |-- contracts/         # JSON Schema 和枚举
+|   |-- contracts/         # JSON Schema 和公共枚举
 |   `-- fixtures/          # 跨模块固定测试负载
-|-- tests/integration/     # 端到端契约测试
-|-- docs/
-|   |-- module-specs/      # AI 可执行目标文档
-|   `-- USAGE_GUIDE.md
+|-- tests/integration/     # Gate A–D 集成测试入口
+|-- docs/module-specs/     # 目标规格与共享契约
 |-- AGENTS.md              # AI 仓库级规则
-`-- CONTRIBUTING.md
+`-- CONTRIBUTING.md        # 分支、提交和 PR 规则
 ```
 
-## 集成里程碑
+各模块只能通过 `shared/contracts/` 约定的负载交换数据。Module 1 不负责分类，Module 2 不负责后端历史，Module 3 不拥有正式推荐算法，Module 4 不得让 LLM 改变确定性排名。
 
-1. **Gate A — 模拟数据贯通**：模拟窗口经过边缘推理、后端写入并在 Dashboard 显示。
-2. **Gate B — 真实传感器贯通**：MLX90640、LD2450 和至少一个环境/声音传感器运行。
-3. **Gate C — 推荐与降级**：三个房间可排序；关闭 LLM 或一个传感器后核心功能仍可用。
-4. **Gate D — 最终演示**：连续运行 15 分钟，展示状态、趋势、预测、偏好、推荐和本地指示。
+## 当前优先事项
 
-## 项目文档
+1. 将 `module1/hardware-foundation` 的四传感器提交基于最新 `main` 整理、审核并形成新 PR，同时更新已过时的 LD2450 契约描述。
+2. 确定实时热帧在 Module 1 与 Module 2 之间的内存边界，保证无雷达情况下仍能提取占用特征且不上传完整热帧。
+3. 合并两套 Module 2，实现真实数据训练、评估与专用 CI。
+4. 实现 Module 4 正式确定性推荐 adapter、模板解释和可选 LLM provider，完成 Gate C。
+5. 补齐登录用户的历史管理、学习控制、删除账号和选择失败重试 UI。
+6. 完成 Gate B 现场验收、Gate D 15 分钟演示和项目许可证决策。
+
+## 文档入口
 
 - [共享系统契约](docs/module-specs/00_SHARED_CONTRACT.md)
-- [贡献与 Pull Request 规则](CONTRIBUTING.md)
+- [Module 1 规格](docs/module-specs/01_SENSOR_EDGE_HARDWARE.md) / [运行说明](edge/hardware/README.md)
+- [Module 2 规格](docs/module-specs/02_EDGE_ML_PIPELINE.md) / [运行说明](edge/ml/README.md)
+- [Module 3 规格](docs/module-specs/03_BACKEND_DATA_INTELLIGENCE.md) / [运行说明](backend/README.md) / [交接说明](backend/MODULE3_HANDOFF.md)
+- [Module 4 规格](docs/module-specs/04_RECOMMENDATION_FRONTEND.md) / [运行说明](frontend/README.md) / [交接说明](frontend/MODULE4_HANDOFF.md)
+- [Gate A 交接说明](tests/integration/GATE_A_HANDOFF.md)
 - [项目使用与协作教程](docs/USAGE_GUIDE.md)
+- [贡献与 Pull Request 规则](CONTRIBUTING.md)
 
-原始 Proposal 含组员信息，默认保留在团队本地资料目录，不上传仓库。需要纳入 GitHub 时，应先生成脱敏版本并由全组确认。
+根 README 记录当前主线事实，`docs/module-specs/` 描述目标验收标准。历史状态文档如与代码或本页冲突，应视为待归档材料而不是当前执行入口。
+
+原始 Proposal 含团队成员信息，默认保留在团队本地资料中，不上传仓库。若需要纳入 GitHub，应先生成脱敏版本并由团队确认。
