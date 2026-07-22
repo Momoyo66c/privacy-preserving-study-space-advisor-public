@@ -263,7 +263,9 @@ def get_history(
     point_count = hours * 60 // bucket_minutes
     if point_count > settings.max_history_points:
         raise APIError(422, "VALIDATION_ERROR", "History query would return too many points")
-    end = utcnow().replace(second=0, microsecond=0)
+    # Keep the current minute inside the inclusive query window. Rounding down
+    # made a fresh status disagree with history until the following minute.
+    end = utcnow()
     start = end - timedelta(hours=hours)
     rows = ObservationRepository(session).range_for_room(room_id, start, end)
     return RoomHistoryResponse(
