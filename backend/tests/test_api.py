@@ -91,7 +91,28 @@ def test_recommendation_stub_and_record(client: TestClient, valid_observation: d
     with app.state.database.session() as session:
         record = session.query(models.RecommendationRecord).one()
         assert record.adapter_name == "module3-deterministic-stub"
+        assert record.score_breakdown_json is None
         assert "values" not in str(record.rankings_json)
+
+
+def test_anonymous_demo_endpoints_can_be_disabled(client: TestClient, app) -> None:
+    app.state.settings.allow_anonymous_demo = False
+    body = {
+        "schema_version": "1.0",
+        "profile_id": "demo-user",
+        "study_mode": "quiet",
+        "preferences": {
+            "quiet_priority": 1,
+            "low_occupancy_priority": 1,
+            "brightness_priority": 0,
+            "comfort_priority": 0,
+            "distance_priority": 0,
+        },
+        "candidate_room_ids": ["room_a"],
+    }
+    response = client.post("/api/v1/recommendations", json=body)
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "ANONYMOUS_DEMO_DISABLED"
 
 
 def test_optional_edge_bearer_token(tmp_path, valid_observation: dict) -> None:

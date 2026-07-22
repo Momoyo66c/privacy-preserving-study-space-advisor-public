@@ -1,5 +1,30 @@
 # 共享系统契约
 
+## 登录、选择与个性化契约（1.0 增补）
+
+登录用户的推荐请求只包含 `schema_version`、`study_mode` 和 `candidate_room_ids`。客户端不得提交用户 ID 或最终权重；服务端必须从当前会话读取用户和有效偏好。
+
+选择事件只能由明确的“选择此教室”动作产生。`selection_id` 是 UUID 幂等键，重试必须复用同一 ID 和相同负载；服务端生成记录时间。浏览详情、刷新、排序和返回页面不构成选择。
+
+认证使用 HttpOnly、SameSite=Lax 会话 Cookie，数据库只保存令牌 SHA-256。认证后的 POST/PUT/DELETE 使用会话绑定 CSRF token。密码只允许进入注册/登录验证路径，必须使用 Argon2id 哈希，不得写入日志、错误或审计。
+
+新增 Schema：
+
+- `auth_credentials.schema.json`
+- `auth_session_response.schema.json`
+- `authenticated_recommendation_request.schema.json`
+- `me_preferences.schema.json`
+- `me_preference_update.schema.json`
+- `room_selection_request.schema.json`
+- `room_selection_accepted.schema.json`
+- `room_selection_history.schema.json`
+- `user_response.schema.json`
+- `delete_result.schema.json`
+
+选择学习和推荐审计禁止包含密码、Cookie、会话令牌、声音波形、完整热帧、雷达轨迹、精确个人位置、姓名、邮箱或学号。
+
+正式推荐排序仍归模块 4。模块 4 adapter 可向模块 3 返回候选房间的有界子分数用于选择学习；模块 3 必须把 adapter 当作持久化边界，在写入前丢弃非候选房间、未知字段、自由文本、非有限值和越界值。默认 stub 不返回学习证据，因此只记录选择，不改变派生偏好。
+
 ## 1. 文档目的
 
 本文档是四个模块之间唯一的公共接口基线。实现者可以在模块内部自由选择类、函数和文件组织，但不得在未同步的情况下修改本文件定义的字段、枚举、语义和隐私约束。

@@ -1,0 +1,5 @@
+{
+  "schema_version": "1.0",
+  "study_mode": "quiet",
+  "candidate_room_ids": ["room_a", "room_b", "room_c"]
+}

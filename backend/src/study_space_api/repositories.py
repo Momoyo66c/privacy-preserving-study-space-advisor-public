@@ -100,13 +100,31 @@ def cleanup_expired(
     observation_before: datetime,
     forecast_before: datetime,
     recommendation_before: datetime,
+    selection_before: datetime | None = None,
+    session_before: datetime | None = None,
 ) -> dict[str, int]:
     counts: dict[str, int] = {}
-    for key, statement in (
+    statements = [
         ("recommendations", delete(models.RecommendationRecord).where(models.RecommendationRecord.generated_at < recommendation_before)),
         ("forecasts", delete(models.Forecast).where(models.Forecast.generated_at < forecast_before)),
         ("observations", delete(models.Observation).where(models.Observation.observed_at < observation_before)),
-    ):
+        (
+            "sessions",
+            delete(models.UserSession).where(
+                models.UserSession.expires_at < (session_before or recommendation_before)
+            ),
+        ),
+    ]
+    if selection_before is not None:
+        statements.append(
+            (
+                "room_selections",
+                delete(models.RoomSelectionEvent).where(
+                    models.RoomSelectionEvent.recorded_at < selection_before
+                ),
+            )
+        )
+    for key, statement in statements:
         result = session.execute(statement)
         counts[key] = int(result.rowcount or 0)
     return counts

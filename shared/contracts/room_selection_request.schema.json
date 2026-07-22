@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RoomSelectionRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "string", "const": "1.0"},
+    "selection_id": {"type": "string", "format": "uuid"},
+    "room_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "recommendation_request_id": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "source": {"type": "string", "enum": ["recommendation", "room_detail"]}
+  },
+  "required": [
+    "schema_version",
+    "selection_id",
+    "room_id",
+    "recommendation_request_id",
+    "source"
+  ],
+  "allOf": [
+    {
+      "if": {"properties": {"source": {"const": "recommendation"}}},
+      "then": {"properties": {"recommendation_request_id": {"type": "string"}}}
+    }
+  ]
+}

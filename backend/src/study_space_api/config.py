@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     edge_api_token: str | None = None
     cors_origins: list[str] = ["http://localhost:5173"]
     recommendation_adapter_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
+    allow_anonymous_demo: bool = True
+    session_ttl_seconds: int = Field(default=28_800, ge=300, le=604_800)
+    session_cookie_secure: bool = False
+    login_max_failures: int = Field(default=5, ge=1, le=100)
+    login_failure_window_seconds: int = Field(default=900, ge=60, le=86_400)
+    selection_retention_days: int = Field(default=90, ge=1, le=3650)
 
     @field_validator("edge_api_token", mode="before")
     @classmethod
@@ -38,6 +44,13 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [part.strip() for part in value.split(",") if part.strip()]
         return value
+
+    @model_validator(mode="after")
+    def production_security_defaults(self) -> "Settings":
+        if self.app_env == "production":
+            self.allow_anonymous_demo = False
+            self.session_cookie_secure = True
+        return self
 
 
 @lru_cache

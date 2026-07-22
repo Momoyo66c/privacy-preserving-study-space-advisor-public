@@ -8,12 +8,15 @@ Measured locally on 2026-07-16 with Python 3.11.6, SQLite, the fixed synthetic s
 | All-room status | 58.34 ms | < 500 ms | pass |
 | 24-hour/5-minute history | 57.20 ms | < 1,000 ms | pass |
 | Recommendation context + stub | 53.22 ms | < 500 ms | pass |
+| Authenticated selection record + synchronous learning boundary | 33.88 ms | < 300 ms | pass |
+
+The selection measurement was added on 2026-07-22 and run with Python 3.12.13 over the same real single-worker localhost Uvicorn transport. The full 61-test suite was separately verified on Python 3.11.6. Selection used the default stub, so this measures Module 3 validation, status-context preparation, transaction and persistence; Module 4 adapter latency remains bounded by its configured timeout.
 
 Run `python scripts/benchmark_http.py` from `backend/` to reproduce the Uvicorn HTTP benchmark. It creates a temporary database, selects a free localhost port, terminates the server afterward, and does not retain sensor or preview data. `benchmark_api.py` remains available as the faster in-process diagnostic.
 
 ## Container smoke test
 
-`scripts/docker_smoke.ps1` passed locally on 2026-07-16 with Docker Desktop 4.82.0 and Engine 29.6.1. It built the Python 3.11 image, ran Alembic to head, started one Uvicorn worker, received a healthy database/stub-adapter response, and removed the temporary container.
+`scripts/docker_smoke.ps1` passed again locally on 2026-07-22 with Engine 29.6.1. It built the Python 3.11 image with the authentication dependencies, ran Alembic through migration `0002`, started one Uvicorn worker, received HTTP 200 with a healthy database and expected stub adapter, and removed the temporary container.
 
 ## Chronological backtest
 

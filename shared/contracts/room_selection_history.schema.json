@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RoomSelectionHistoryResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "string", "const": "1.0"},
+    "selections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "selection_id": {"type": "string", "format": "uuid"},
+          "room_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "room_name": {"type": "string", "minLength": 1},
+          "source": {"type": "string", "enum": ["recommendation", "room_detail"]},
+          "recommendation_request_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 128},
+          "recorded_at": {"type": "string", "format": "date-time"},
+          "selected_rank": {"type": ["integer", "null"], "minimum": 1},
+          "selected_score": {"type": ["integer", "null"], "minimum": 0, "maximum": 100},
+          "evidence": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "quiet_priority": {"type": "number", "minimum": 0, "maximum": 1},
+              "low_occupancy_priority": {"type": "number", "minimum": 0, "maximum": 1},
+              "brightness_priority": {"type": "number", "minimum": 0, "maximum": 1},
+              "comfort_priority": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          }
+        },
+        "required": [
+          "selection_id",
+          "room_id",
+          "room_name",
+          "source",
+          "recommendation_request_id",
+          "recorded_at",
+          "selected_rank",
+          "selected_score",
+          "evidence"
+        ]
+      }
+    },
+    "next_cursor": {"type": ["string", "null"]}
+  },
+  "required": ["schema_version", "selections", "next_cursor"]
+}
