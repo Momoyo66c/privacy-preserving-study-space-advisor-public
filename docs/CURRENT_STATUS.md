@@ -1,10 +1,10 @@
 # 当前状态
 
-更新时间：2026-07-22 15:06 SGT
+更新时间：2026-07-22 15:18 SGT
 
 ## 当前结论
 
-项目位于 `module1/hardware-foundation` 分支。**模块 01 已按最终四传感器 `analytics` 生产基线完成收尾。** 已完成的驱动、ESP32/Pi 部署、模拟、会话打包、隐私门禁和兼容性测试均保留。
+项目位于 `module1/hardware-foundation` 分支。四传感器功能与数据契约已完成；因用户明确要求约 30 FPS 热成像，当前重新打开最终性能收尾，将生产基线从 `analytics` 的约 2 FPS 切换为 `live_max` 的目标约 32 FPS。已完成的驱动、ESP32/Pi 部署、模拟、会话打包、隐私门禁和兼容性测试均保留。
 
 历史遗留的未跟踪内容仍只有 `references/`。其中包含多个 GitHub 仓库和 `clone-results.log`；不删除、不移动、不整批纳入 Git。本阶段新固件和测试均作为独立提交审阅，不与该目录混合。
 
@@ -45,6 +45,7 @@
 | 验收与交接资料校正 | 已完成 | README、硬件验收记录、交接说明、规格审计和共享契约均反映最终四传感器事实 |
 | LD2450 去除 | 已完成 | 两份真实配置与 ESP32 固件禁用 radar；重烧哈希、四项探测、10 分钟会话和 `not_configured` 语义通过 |
 | 模块 01 最终验收 | 已完成 | 120 窗口、`valid=true`、1,180 热帧、峰值 RSS 39,040 KiB、禁止媒体 0、立即重启通过；匿名真实夹具已交付；最终 145 项标准测试和 84.30% 覆盖率通过 |
+| 生产热成像 32 FPS 修正 | 本地完成，待实机 | 固件默认改为 64 Hz 子页/32 FPS，Hub 配置改为 921600 baud、32 Hz 和 256 帧队列；配置、固件、Hub、实时热图 74 项标准测试通过 |
 
 ## 当前风险
 
@@ -158,7 +159,8 @@
 - 匿名真实摘要已交付为 `shared/fixtures/sensor_window_real_four_sensor.json`；已移除本地热帧引用，不含个人标识或原始媒体。
 - 最终四传感器契约与文档收尾后，本机 Module 1 CI 等价门禁通过：145 项测试、84.30% 覆盖率（要求 80%）、Python 编译和 wheel 构建成功；`git diff --check` 通过。
 - 树莓派地址更新为 `203.0.113.56`；使用既有主机密钥和专用 SSH 密钥完成只读身份核验，返回 `raspberrypi`、`pi`、`aarch64`。
+- 发现最终烧录仍为 `analytics`，5 秒只有约 10 个热帧，即约 2 FPS，而不是用户要求的约 30 FPS。生产默认已改为 `live_max`：64 Hz 子页、32 FPS、1 MHz I²C、921600 baud；相关 74 项标准测试通过，等待 Pi 编译、烧录和实际 FPS 验证。
 
 ## 下一步
 
-模块 01 已完成，不再进行 LD2450 接线或实物复测。下一个跨模块动作是由模块 2 消费 `sensor_window_real_four_sensor.json` 或通过 `SessionReader` 读取会话，并正确处理 `radar=not_configured` 与 `not_inference_ready:thermal_offline_without_radar`。自动任务保持取消。
+先完成 M1-AL 的 Pi 编译、烧录和约 30 FPS 实测；不恢复 LD2450，不改变四传感器数据契约。实测通过后再恢复模块 01 完成状态。自动任务保持取消。
