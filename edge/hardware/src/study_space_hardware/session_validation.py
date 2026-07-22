@@ -302,6 +302,36 @@ def validate_session(
     if len(window_ids) != len(set(map(str, window_ids))):
         errors.append("windows.jsonl contains duplicate window_id values")
 
+    relative_features_path = root / "relative_features.jsonl"
+    if relative_features_path.is_file():
+        relative_rows: list[dict[str, Any]] = []
+        try:
+            for line_number, line in enumerate(
+                relative_features_path.read_text(encoding="utf-8").splitlines(),
+                start=1,
+            ):
+                item = json.loads(line)
+                if not isinstance(item, dict):
+                    errors.append(
+                        f"relative_features.jsonl line {line_number} must be an object"
+                    )
+                    continue
+                relative_rows.append(item)
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            errors.append(
+                f"invalid relative_features.jsonl: {type(exc).__name__}: {exc}"
+            )
+        if len(relative_rows) != len(windows):
+            errors.append("relative feature count does not match windows.jsonl")
+        for index, item in enumerate(relative_rows):
+            if item.get("schema_version") != "1.0":
+                errors.append(f"relative feature {index + 1} schema_version must be 1.0")
+            if index < len(window_ids) and item.get("window_id") != window_ids[index]:
+                errors.append(f"relative feature {index + 1} window_id mismatch")
+            for sensor in ("light", "sound"):
+                if not isinstance(item.get(sensor), dict):
+                    errors.append(f"relative feature {index + 1} missing {sensor}")
+
     referenced_thermal: set[str] = set()
     previous_window_end: datetime | None = None
     for index, payload in enumerate(windows, start=1):

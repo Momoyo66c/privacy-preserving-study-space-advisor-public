@@ -16,6 +16,8 @@ Module 2 posts the `shared/contracts/edge_observation.schema.json` payload to `/
 
 Thermal preview uses its separate edge endpoint. It is fixed at 32 x 24 normalized values, held in one process for at most 30 seconds, and never reaches SQLAlchemy, backups, history, recommendations, or ordinary logs.
 
+The dashboard can fetch `GET /api/v1/rooms/{room_id}/live` to receive the latest `RoomStatus` and `ThermalPreviewResponse` in one read. The endpoint is an additive projection only: module 2 continues writing through the existing observation and thermal-preview contracts.
+
 Module 4 implements the asynchronous `RecommendationAdapter` protocol in `study_space_api.adapters.recommendation`. Module 3 currently ships a visibly marked deterministic stub; it is not the final personalized algorithm. Adapter failures fall back to the stub without losing core API availability.
 
 ## Forecasting

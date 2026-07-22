@@ -1,23 +1,84 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
 from study_space_hardware.dashboard_bridge import (
     DashboardClient,
     LiveSnapshotBuilder,
+    SensorDashboardBridge,
     count_hot_regions,
     normalize_thermal,
 )
+from study_space_hardware.bootstrap import build_orchestrator
+from study_space_hardware.clock import ManualClock
+from study_space_hardware.config import load_config
 from study_space_hardware.models import (
     SensorHealth,
     SensorHealthReport,
     SensorSample,
 )
+from study_space_hardware.storage import SessionWriter
 
 
 NOW = datetime(2026, 7, 22, 8, 30, tzinfo=timezone.utc)
+EXAMPLE_CONFIG = Path(__file__).parents[1] / "config/example.yaml"
+
+
+class RecordingPublisher:
+    def __init__(self) -> None:
+        self.payloads: list[dict] = []
+        self.previews_published = 0
+        self.observations_published = 0
+        self.failed = 0
+        self.started = False
+        self.closed = False
+
+    def start(self) -> None:
+        self.started = True
+
+    def submit(self, payload: dict) -> None:
+        self.payloads.append(payload)
+        self.previews_published += 1
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class NonThermalOrchestrator:
+    def __init__(self) -> None:
+        self.drivers = {"thermal": object(), "sound": object()}
+        self.closed = False
+
+    def run_window(self, *, on_sample) -> object:
+        on_sample(_sample("sound", {"rms": 0.04, "peak": 0.12}))
+        return type("Window", (), {"payload": {"quality": {"completeness": 0.5}}})()
+
+    def health(self) -> dict[str, SensorHealthReport]:
+        return {
+            "thermal": SensorHealthReport(
+                sensor="thermal",
+                status=SensorHealth.OFFLINE,
+                consecutive_failures=3,
+                failed_reads=3,
+                message="initialization failed",
+                last_success_at=None,
+            ),
+            "sound": SensorHealthReport(
+                sensor="sound",
+                status=SensorHealth.OK,
+                consecutive_failures=0,
+                failed_reads=0,
+                message=None,
+                last_success_at=NOW,
+            ),
+        }
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def _sample(sensor: str, values: dict) -> SensorSample:
@@ -64,7 +125,12 @@ def test_snapshot_builder_keeps_real_proxy_semantics() -> None:
     builder.accept(
         _sample(
             "sound",
-            {"rms": 0.12, "peak": 0.31, "raw_audio_persisted": False},
+            {
+                "rms": 0.12,
+                "peak": 0.31,
+                "relative_level": 0.72,
+                "raw_audio_persisted": False,
+            },
         )
     )
     builder.accept(
@@ -89,15 +155,21 @@ def test_snapshot_builder_keeps_real_proxy_semantics() -> None:
 
     bundle = builder.build(reports)
     preview = bundle["thermal_preview"]
+    sound_preview = bundle["sound_preview"]
     observation = bundle["observation"]
 
     assert preview["captured_at"] == "2026-07-22T08:30:00.000Z"
     assert preview["width"] == 32
     assert len(preview["values"]) == 768
+    assert sound_preview["captured_at"] == "2026-07-22T08:30:00.000Z"
+    assert sound_preview["rms"] == 0.12
+    assert sound_preview["expires_in_seconds"] == 3
     assert observation["room_state"] == "unknown"
     assert observation["occupancy_level"] == "unknown"
     assert observation["confidence"] == 0.0
     assert observation["features"]["sound_rms_mean"] == 0.12
+    assert observation["features"]["sound_peak_max"] == 0.72
+    assert observation["features"]["light_relative_mean"] == 0.1026
     assert observation["features"]["light_lux"] is None
     assert observation["sensor_health"]["radar"] == "not_configured"
     assert observation["model"]["name"] == "sensor-dashboard-bridge"
@@ -105,6 +177,97 @@ def test_snapshot_builder_keeps_real_proxy_semantics() -> None:
     assert "DASHBOARD_ONLY_NO_MODULE2_INFERENCE" in observation["warnings"]
 
 
+def test_snapshot_builder_expires_sound_peak_hold() -> None:
+    builder = LiveSnapshotBuilder(
+        room_id="room_a",
+        device_id="pi5-a",
+        sound_hold_seconds=10.0,
+    )
+    builder.accept(_sample("sound", {"rms": 0.02, "peak": 0.25}))
+    builder.accept(
+        replace(
+            _sample(
+                "thermal",
+                {
+                    "width": 32,
+                    "height": 24,
+                    "temperatures_c": (23.0,) * 768,
+                },
+            ),
+            captured_at=NOW + timedelta(seconds=11),
+        )
+    )
+
+    observation = builder.build({})["observation"]
+
+    assert observation["features"]["sound_peak_max"] is None
+
+
+def test_snapshot_builder_publishes_nonthermal_data_when_thermal_is_offline() -> None:
+    builder = LiveSnapshotBuilder(room_id="room_a", device_id="pi5-a")
+    builder.accept(_sample("sound", {"rms": 0.04, "peak": 0.12}))
+    reports = NonThermalOrchestrator().health()
+
+    payload = builder.build(reports)
+
+    assert payload["thermal_preview"] is None
+    assert payload["sound_preview"]["rms"] == 0.04
+    assert payload["observation"]["features"]["thermal_hot_region_count"] is None
+    assert payload["observation"]["features"]["sound_rms_mean"] == 0.04
+    assert payload["observation"]["sensor_health"]["thermal"] == "offline"
+
+
+def test_bridge_submits_window_without_a_thermal_frame() -> None:
+    orchestrator = NonThermalOrchestrator()
+    publisher = RecordingPublisher()
+    bridge = SensorDashboardBridge(
+        orchestrator=orchestrator,  # type: ignore[arg-type]
+        builder=LiveSnapshotBuilder(room_id="room_a", device_id="pi5-a"),
+        publisher=publisher,  # type: ignore[arg-type]
+    )
+
+    completed = bridge.run(window_count=1)
+
+    assert completed == 1
+    assert publisher.payloads[0]["thermal_preview"] is None
+    assert publisher.payloads[0]["observation"]["features"]["sound_rms_mean"] == 0.04
+    assert orchestrator.closed is True
+
+
 def test_dashboard_client_requires_absolute_http_url() -> None:
     with pytest.raises(ValueError, match="absolute HTTP"):
         DashboardClient(backend_url="localhost:8000", room_id="room_a")
+
+
+def test_one_process_streams_and_writes_the_same_sensor_window(tmp_path: Path) -> None:
+    config = load_config(EXAMPLE_CONFIG)
+    config = replace(
+        config,
+        storage=replace(config.storage, data_dir=str(tmp_path / "sessions")),
+    )
+    clock = ManualClock()
+    orchestrator = build_orchestrator(config, clock=clock)
+    publisher = RecordingPublisher()
+    writer = SessionWriter(
+        config=config,
+        scenario="unlabeled_relative_training",
+        now=clock.now_utc(),
+    )
+    bridge = SensorDashboardBridge(
+        orchestrator=orchestrator,
+        builder=LiveSnapshotBuilder(
+            room_id=config.room_id,
+            device_id=config.device_id,
+        ),
+        publisher=publisher,  # type: ignore[arg-type]
+    )
+
+    completed = bridge.run(writer=writer, window_count=1)
+    session_path = writer.finalize(clock.now_utc())
+
+    assert completed == writer.window_count == 1
+    assert publisher.started is True
+    assert publisher.closed is True
+    assert publisher.payloads
+    assert (session_path / "windows.jsonl").is_file()
+    assert (session_path / "relative_features.jsonl").is_file()

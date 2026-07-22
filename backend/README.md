@@ -25,6 +25,8 @@ uvicorn study_space_api.main:app --reload --host 127.0.0.1 --port 8000
 
 OpenAPI is available at `http://localhost:8000/docs`. The application intentionally uses one worker because thermal previews are process-local and are never persisted.
 
+The sensor dashboard reads `GET /api/v1/rooms/{room_id}/live`. This read-only projection combines the latest module 2 observation summary with the current in-memory thermal preview; it does not create a second storage path or persist thermal values.
+
 To receive Pi traffic on a trusted LAN, explicitly bind `0.0.0.0` and configure `EDGE_API_TOKEN`. When the token is set, both edge write endpoints require `Authorization: Bearer <token>`. Preferences and recommendation reads remain anonymous demo endpoints.
 
 ## Important configuration

@@ -28,6 +28,26 @@ def _mean(samples: list[SensorSample], field: str) -> float | None:
     return statistics.fmean(values) if values else None
 
 
+def _values(samples: list[SensorSample], field: str) -> list[float]:
+    return [
+        float(sample.values[field])
+        for sample in samples
+        if field in sample.values and sample.values[field] is not None
+    ]
+
+
+def _relative_summary(values: list[float]) -> dict[str, float | int | None]:
+    return {
+        "sample_count": len(values),
+        "mean": statistics.fmean(values) if values else None,
+        "std": statistics.pstdev(values) if len(values) > 1 else (
+            0.0 if values else None
+        ),
+        "minimum": min(values) if values else None,
+        "maximum": max(values) if values else None,
+    }
+
+
 def _direct_health(
     reports: Mapping[str, SensorHealthReport],
     sensor: str,
@@ -174,8 +194,33 @@ class WindowAccumulator:
             tuple(float(value) for value in sample.values["temperatures_c"])
             for sample in thermal_samples
         )
+        light_adc = _values(light_samples, "light_adc_raw")
+        light_normalized = _values(light_samples, "light_normalized")
+        relative_features = {
+            "schema_version": SCHEMA_VERSION,
+            "window_id": window_id,
+            "light": {
+                "sensor_model": "HW-486",
+                "calibrated_lux": any(
+                    bool(sample.values.get("calibrated_lux"))
+                    for sample in light_samples
+                ),
+                "adc": _relative_summary(light_adc),
+                "normalized": _relative_summary(light_normalized),
+            },
+            "sound": {
+                "sensor_model": "HW-485",
+                "calibrated_db": False,
+                "rms": _relative_summary(rms_values),
+                "peak": max(
+                    (float(sample.values["peak"]) for sample in sound_samples),
+                    default=None,
+                ),
+            },
+        }
         return CollectedWindow(
             payload=payload,
             thermal_frames=thermal_frames,
             health_reports=dict(health_reports),
+            relative_features=relative_features,
         )

@@ -11,6 +11,8 @@ test("mock snapshot matches the module-facing live contract", () => {
   const snapshot = createMockSnapshot(3, new Date("2026-07-22T08:00:00Z"));
   assert.equal(isLiveSensorSnapshot(snapshot), true);
   assert.equal(snapshot.room.sensor_health.radar, "not_configured");
+  assert.equal(snapshot.sound_preview.available, true);
+  assert.equal(typeof snapshot.sound_preview.rms, "number");
   assert.equal(snapshot.thermal_preview.values.length, 32 * 24);
   for (const field of ["temperature_c", "humidity_pct", "light_relative_mean", "light_lux", "sound_rms_mean", "sound_peak_max"]) {
     assert.equal(typeof snapshot.room.features[field], "number");

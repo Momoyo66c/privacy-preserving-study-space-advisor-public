@@ -63,6 +63,15 @@ export function createMockSnapshot(sequence = 0, now = new Date()) {
       is_stale: false,
       forecasts: []
     },
+    sound_preview: {
+      schema_version: "1.0",
+      room_id: "room_a",
+      available: true,
+      captured_at: timestamp,
+      rms: Number(sound.toFixed(4)),
+      expires_at: new Date(now.getTime() + 3000).toISOString(),
+      unavailable_reason: null
+    },
     thermal_preview: {
       schema_version: "1.0",
       room_id: "room_a",
@@ -81,9 +90,12 @@ export function createMockSnapshot(sequence = 0, now = new Date()) {
 export function isLiveSensorSnapshot(value) {
   if (!value || typeof value !== "object") return false;
   const preview = value.thermal_preview;
+  const sound = value.sound_preview;
   return value.schema_version === "1.0"
     && typeof value.generated_at === "string"
     && Boolean(value.room && typeof value.room.room_id === "string" && value.room.features)
+    && Boolean(sound && typeof sound.available === "boolean")
+    && (!sound.available || (typeof sound.rms === "number" && typeof sound.captured_at === "string"))
     && Boolean(preview && typeof preview.available === "boolean")
     && (!preview.available || (preview.width === 32 && preview.height === 24 && preview.values?.length === 768));
 }

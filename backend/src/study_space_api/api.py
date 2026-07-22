@@ -25,6 +25,7 @@ from .schemas import (
     FeatureSummary,
     ForecastResult,
     HealthResponse,
+    LiveSensorSnapshotResponse,
     ObservationAccepted,
     OccupancyLevel,
     PreferenceBody,
@@ -39,6 +40,8 @@ from .schemas import (
     RoomStatusesResponse,
     RoomsResponse,
     SensorHealth,
+    SoundPreview,
+    SoundPreviewResponse,
     StableId,
     ThermalPreview,
     ThermalPreviewResponse,
@@ -237,6 +240,29 @@ def list_room_statuses(session: Session = Depends(get_session), settings: Settin
     return result
 
 
+@router.get("/api/v1/rooms/{room_id}/live", response_model=LiveSensorSnapshotResponse)
+def get_live_sensor_snapshot(
+    room_id: StableId,
+    request: Request,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> LiveSensorSnapshotResponse:
+    """Return the latest sensor summary and ephemeral thermal preview together."""
+
+    room = RoomRepository(session).get(room_id)
+    if room is None:
+        raise APIError(404, "ROOM_NOT_FOUND", "Room was not found")
+    now = utcnow()
+    result = LiveSensorSnapshotResponse(
+        generated_at=now,
+        room=build_room_status(session, room, settings, now),
+        thermal_preview=request.app.state.thermal_cache.get(room_id, now=now),
+        sound_preview=request.app.state.sound_cache.get(room_id, now=now),
+    )
+    session.commit()
+    return result
+
+
 @router.get("/api/v1/rooms/{room_id}", response_model=RoomDetailResponse)
 def get_room(room_id: StableId, session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> RoomDetailResponse:
     room = RoomRepository(session).get(room_id)
@@ -334,6 +360,44 @@ def get_thermal_preview(room_id: StableId, request: Request, session: Session = 
     if RoomRepository(session).get(room_id) is None:
         raise APIError(404, "ROOM_NOT_FOUND", "Room was not found")
     return request.app.state.thermal_cache.get(room_id)
+
+
+@router.put(
+    "/api/v1/edge/rooms/{room_id}/sound-preview",
+    response_model=SoundPreviewResponse,
+    dependencies=[Depends(require_edge_auth)],
+)
+def put_sound_preview(
+    room_id: StableId,
+    body: SoundPreview,
+    request: Request,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> SoundPreviewResponse:
+    if room_id != body.room_id:
+        raise APIError(422, "VALIDATION_ERROR", "Path room_id must match payload room_id")
+    if RoomRepository(session).get(room_id) is None:
+        raise APIError(404, "ROOM_NOT_FOUND", "Room was not found")
+    now = utcnow()
+    if body.captured_at > now + timedelta(seconds=settings.future_skew_seconds):
+        raise APIError(422, "PREVIEW_TIME_INVALID", "captured_at is too far in the future")
+    if body.captured_at + timedelta(seconds=body.expires_in_seconds) <= now:
+        raise APIError(422, "PREVIEW_EXPIRED", "Preview was already expired when received")
+    return request.app.state.sound_cache.put(body, now=now)
+
+
+@router.get(
+    "/api/v1/rooms/{room_id}/sound-preview",
+    response_model=SoundPreviewResponse,
+)
+def get_sound_preview(
+    room_id: StableId,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> SoundPreviewResponse:
+    if RoomRepository(session).get(room_id) is None:
+        raise APIError(404, "ROOM_NOT_FOUND", "Room was not found")
+    return request.app.state.sound_cache.get(room_id)
 
 
 @router.post("/api/v1/recommendations", response_model=RecommendationResponse)

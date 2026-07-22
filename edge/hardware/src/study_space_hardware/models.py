@@ -118,6 +118,7 @@ class CollectedWindow:
     payload: dict[str, Any]
     thermal_frames: tuple[tuple[float, ...], ...] = ()
     health_reports: Mapping[str, SensorHealthReport] = field(default_factory=dict)
+    relative_features: Mapping[str, Any] = field(default_factory=dict)
 
 
 def ensure_utc(value: datetime) -> datetime:

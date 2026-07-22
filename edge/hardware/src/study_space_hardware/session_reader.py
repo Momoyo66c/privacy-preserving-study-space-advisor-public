@@ -32,6 +32,7 @@ class SessionWindow:
 
     payload: Mapping[str, Any]
     thermal_frames: np.ndarray | None
+    relative_features: Mapping[str, Any] | None = None
 
 
 class SessionReader:
@@ -57,6 +58,14 @@ class SessionReader:
             .read_text(encoding="utf-8")
             .splitlines()
         )
+        relative_path = self.path / "relative_features.jsonl"
+        self._relative_features = {
+            str(item["window_id"]): item
+            for item in (
+                json.loads(line)
+                for line in relative_path.read_text(encoding="utf-8").splitlines()
+            )
+        } if relative_path.is_file() else {}
 
     @property
     def metadata(self) -> dict[str, Any]:
@@ -87,4 +96,7 @@ class SessionReader:
             yield SessionWindow(
                 payload=payload,
                 thermal_frames=thermal_frames,
+                relative_features=deepcopy(
+                    self._relative_features.get(str(payload["window_id"]))
+                ),
             )

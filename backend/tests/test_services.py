@@ -6,8 +6,9 @@ from study_space_api import models
 from study_space_api.database import Base, Database
 from study_space_api.services.forecasting import DeterministicForecastStrategy
 from study_space_api.services.history import build_history_points
+from study_space_api.services.sound import SoundPreviewCache
 from study_space_api.services.thermal import ThermalPreviewCache
-from study_space_api.schemas import ThermalPreview
+from study_space_api.schemas import SoundPreview, ThermalPreview
 
 
 def make_observation(room_id: str, device_id: str, at: datetime, level: str, index: int) -> models.Observation:
@@ -63,3 +64,21 @@ def test_thermal_cache_expiration_without_database() -> None:
     cache = ThermalPreviewCache()
     assert cache.put(preview,now).available is True
     assert cache.get("r",now+timedelta(seconds=2)).unavailable_reason == "expired"
+
+
+def test_sound_cache_keeps_only_current_rms_and_expires() -> None:
+    now = datetime.now(timezone.utc)
+    preview = SoundPreview(
+        schema_version="1.0",
+        room_id="r",
+        captured_at=now,
+        rms=0.125,
+        expires_in_seconds=2,
+    )
+    cache = SoundPreviewCache()
+
+    current = cache.put(preview, now)
+
+    assert current.available is True
+    assert current.rms == 0.125
+    assert cache.get("r", now + timedelta(seconds=3)).unavailable_reason == "expired"

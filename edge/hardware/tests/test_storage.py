@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import hashlib
+import tarfile
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -13,7 +15,11 @@ from study_space_hardware.bootstrap import build_orchestrator
 from study_space_hardware.cli import collect_main
 from study_space_hardware.clock import ManualClock
 from study_space_hardware.config import load_config
-from study_space_hardware.storage import SessionWriter, enforce_session_retention
+from study_space_hardware.storage import (
+    SessionWriter,
+    create_session_archive,
+    enforce_session_retention,
+)
 
 
 EXAMPLE_CONFIG = Path(__file__).parents[1] / "config/example.yaml"
@@ -53,7 +59,20 @@ def test_session_writer_saves_npz_and_never_audio(tmp_path) -> None:
         "radar warm-up",
     ]
     assert metadata["window_count"] == 1
+    assert metadata["relative_measurements"]["light"]["calibrated_lux"] is False
+    relative = json.loads(
+        (session_path / "relative_features.jsonl").read_text(encoding="utf-8")
+    )
+    assert relative["window_id"] == stored_payload["window_id"]
     assert (session_path / "checksums.json").is_file()
+
+    archive_path, digest = create_session_archive(session_path)
+    assert hashlib.sha256(archive_path.read_bytes()).hexdigest() == digest
+    assert archive_path.with_suffix(".gz.sha256").is_file()
+    with tarfile.open(archive_path, "r:gz") as archive:
+        names = set(archive.getnames())
+    assert f"{session_path.name}/session.json" in names
+    assert f"{session_path.name}/relative_features.jsonl" in names
 
 
 def test_retention_removes_expired_and_excess_sessions_only(tmp_path) -> None:

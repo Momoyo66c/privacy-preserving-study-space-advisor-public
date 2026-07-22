@@ -52,6 +52,9 @@ def test_reader_exposes_validated_windows_and_streams_thermal_npz(tmp_path) -> N
     assert windows[0].thermal_frames.shape == (10, 768)
     assert windows[0].thermal_frames.dtype.name == "float32"
     assert windows[0].thermal_frames.flags.writeable is False
+    assert windows[0].relative_features is not None
+    assert windows[0].relative_features["window_id"] == windows[0].payload["window_id"]
+    assert windows[0].relative_features["sound"]["calibrated_db"] is False
 
 
 def test_reader_refuses_tampered_package_before_exposing_windows(tmp_path) -> None:

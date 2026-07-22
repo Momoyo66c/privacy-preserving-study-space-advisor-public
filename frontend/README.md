@@ -24,7 +24,7 @@ window.AIOT_CONFIG = {
 };
 ```
 
-前端读取 `GET /api/v1/rooms/{room_id}/live`。后端聚合现有 `RoomStatus` 和 `ThermalPreview`；模块 02 仍通过既有 observation 与 thermal-preview 写接口提供数据，不创建第二条存储路径。
+前端读取 `GET /api/v1/rooms/{room_id}/live`，并以 250 ms 间隔读取内存态 `GET /api/v1/rooms/{room_id}/sound-preview`。声音卡片显示当前归一化 RMS，不使用 10 秒峰值、对数放大或释放包络；该实时值不写入数据库，也不保存原始音频。模块 02 仍通过既有 observation 与 thermal-preview 写接口提供持久摘要和热预览。
 
 ## 检查
 

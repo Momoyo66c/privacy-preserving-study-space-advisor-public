@@ -9,6 +9,7 @@ import math
 import os
 import threading
 import time
+from collections import deque
 from collections.abc import Mapping, Sequence
 from datetime import timezone
 from typing import Any
@@ -18,7 +19,6 @@ from urllib.request import Request, urlopen
 
 from .bootstrap import build_orchestrator
 from .config import load_config
-from .drivers.base import SensorDriver, SensorError
 from .models import (
     THERMAL_HEIGHT,
     THERMAL_PIXELS,
@@ -27,6 +27,9 @@ from .models import (
     SensorHealthReport,
     SensorSample,
 )
+from .orchestrator import SensorOrchestrator
+from .session_validation import validate_session
+from .storage import SessionWriter, create_session_archive, enforce_session_retention
 
 
 LOGGER = logging.getLogger(__name__)
@@ -104,24 +107,70 @@ def _environment_health(light: str, climate: str) -> str:
 class LiveSnapshotBuilder:
     """Retain the latest samples and build the backend's existing payloads."""
 
-    def __init__(self, *, room_id: str, device_id: str, expires_in_seconds: int = 5) -> None:
+    def __init__(
+        self,
+        *,
+        room_id: str,
+        device_id: str,
+        expires_in_seconds: int = 5,
+        sound_hold_seconds: float = 10.0,
+    ) -> None:
         if not 1 <= expires_in_seconds <= 30:
             raise ValueError("expires_in_seconds must be between 1 and 30")
+        if sound_hold_seconds <= 0:
+            raise ValueError("sound_hold_seconds must be positive")
         self.room_id = room_id
         self.device_id = device_id
         self.expires_in_seconds = expires_in_seconds
+        self.sound_hold_seconds = sound_hold_seconds
         self._latest: dict[str, SensorSample] = {}
+        self._sound_peaks: deque[tuple[float, float]] = deque()
 
     def accept(self, sample: SensorSample) -> None:
         if sample.valid:
             self._latest[sample.sensor] = sample
+            if sample.sensor == "sound":
+                captured_s = sample.captured_at.timestamp()
+                self._sound_peaks.append(
+                    (
+                        captured_s,
+                        float(
+                            sample.values.get(
+                                "relative_level",
+                                sample.values.get("peak", 0.0),
+                            )
+                        ),
+                    )
+                )
+                self._prune_sound_peaks(captured_s)
+
+    def _prune_sound_peaks(self, captured_s: float) -> None:
+        cutoff = captured_s - self.sound_hold_seconds
+        while self._sound_peaks and self._sound_peaks[0][0] < cutoff:
+            self._sound_peaks.popleft()
 
     def build(self, reports: Mapping[str, SensorHealthReport]) -> dict[str, Any]:
         thermal = self._latest.get("thermal")
-        if thermal is None:
-            raise RuntimeError("a thermal sample is required before publishing")
-        raw_thermal = tuple(float(value) for value in thermal.values["temperatures_c"])
-        normalized = normalize_thermal(raw_thermal)
+        if not self._latest:
+            raise RuntimeError("at least one sensor sample is required before publishing")
+        thermal_report = reports.get("thermal")
+        if thermal_report is not None and thermal_report.status == SensorHealth.OFFLINE:
+            thermal = None
+        normalized: list[float] | None = None
+        if thermal is not None:
+            raw_thermal = tuple(
+                float(value) for value in thermal.values["temperatures_c"]
+            )
+            normalized = normalize_thermal(raw_thermal)
+        reference_sample = max(
+            self._latest.values(),
+            key=lambda sample: sample.captured_at,
+        )
+        self._prune_sound_peaks(reference_sample.captured_at.timestamp())
+        sound_peak_max = max(
+            (peak for _, peak in self._sound_peaks),
+            default=None,
+        )
         sound = self._latest.get("sound")
         light = self._latest.get("light")
         climate = self._latest.get("climate")
@@ -135,23 +184,44 @@ class LiveSnapshotBuilder:
             warning = light.values.get("warning")
             if isinstance(warning, str) and warning:
                 warnings.add(warning)
-        captured_at = (
-            thermal.captured_at.astimezone(timezone.utc)
+        observed_at = (
+            reference_sample.captured_at.astimezone(timezone.utc)
             .isoformat(timespec="milliseconds")
             .replace("+00:00", "Z")
         )
         light_lux = light.values.get("light_lux") if light else None
         light_calibrated = bool(light and light.values.get("calibrated_lux"))
-        preview = {
-            "schema_version": "1.0",
-            "room_id": self.room_id,
-            "captured_at": captured_at,
-            "width": THERMAL_WIDTH,
-            "height": THERMAL_HEIGHT,
-            "values": normalized,
-            "normalization": "window_min_max_clipped",
-            "expires_in_seconds": self.expires_in_seconds,
-        }
+        preview = None
+        if thermal is not None and normalized is not None:
+            thermal_captured_at = (
+                thermal.captured_at.astimezone(timezone.utc)
+                .isoformat(timespec="milliseconds")
+                .replace("+00:00", "Z")
+            )
+            preview = {
+                "schema_version": "1.0",
+                "room_id": self.room_id,
+                "captured_at": thermal_captured_at,
+                "width": THERMAL_WIDTH,
+                "height": THERMAL_HEIGHT,
+                "values": normalized,
+                "normalization": "window_min_max_clipped",
+                "expires_in_seconds": self.expires_in_seconds,
+            }
+        sound_preview = None
+        if sound is not None:
+            sound_captured_at = (
+                sound.captured_at.astimezone(timezone.utc)
+                .isoformat(timespec="milliseconds")
+                .replace("+00:00", "Z")
+            )
+            sound_preview = {
+                "schema_version": "1.0",
+                "room_id": self.room_id,
+                "captured_at": sound_captured_at,
+                "rms": float(sound.values["rms"]),
+                "expires_in_seconds": min(3, self.expires_in_seconds),
+            }
         health = {
             "thermal": _health_value(reports, "thermal"),
             "sound": _health_value(reports, "sound"),
@@ -162,19 +232,23 @@ class LiveSnapshotBuilder:
         warnings.add("DASHBOARD_ONLY_NO_MODULE2_INFERENCE")
         observation = {
             "schema_version": "1.0",
-            "observation_id": f"{self.device_id}-{captured_at}",
+            "observation_id": f"{self.device_id}-{observed_at}",
             "room_id": self.room_id,
             "device_id": self.device_id,
-            "observed_at": captured_at,
+            "observed_at": observed_at,
             "window_seconds": 5,
             "room_state": "unknown",
             "occupancy_level": "unknown",
             "suitability_score": 0,
             "confidence": 0.0,
             "features": {
-                "thermal_hot_region_count": count_hot_regions(normalized),
+                "thermal_hot_region_count": (
+                    count_hot_regions(normalized) if normalized is not None else None
+                ),
                 "radar_active_target_count": None,
                 "sound_rms_mean": sound.values.get("rms") if sound else None,
+                "sound_peak_max": sound_peak_max,
+                "light_relative_mean": light.values.get("light_normalized") if light else None,
                 "light_lux": light_lux if light_calibrated else None,
                 "temperature_c": climate.values.get("temperature_c") if climate else None,
                 "humidity_pct": climate.values.get("humidity_pct") if climate else None,
@@ -192,7 +266,11 @@ class LiveSnapshotBuilder:
             },
             "warnings": sorted(warnings),
         }
-        return {"thermal_preview": preview, "observation": observation}
+        return {
+            "thermal_preview": preview,
+            "sound_preview": sound_preview,
+            "observation": observation,
+        }
 
 
 class DashboardClient:
@@ -214,12 +292,21 @@ class DashboardClient:
             + quote(room_id, safe="")
             + "/thermal-preview"
         )
+        self.sound_preview_url = (
+            base_url
+            + "/api/v1/edge/rooms/"
+            + quote(room_id, safe="")
+            + "/sound-preview"
+        )
         self.observation_url = base_url + "/api/v1/edge/observations"
         self.edge_token = edge_token
         self.timeout_s = timeout_s
 
     def publish_preview(self, payload: Mapping[str, Any]) -> None:
         self._publish(self.preview_url, "PUT", payload)
+
+    def publish_sound_preview(self, payload: Mapping[str, Any]) -> None:
+        self._publish(self.sound_preview_url, "PUT", payload)
 
     def publish_observation(self, payload: Mapping[str, Any]) -> None:
         self._publish(self.observation_url, "POST", payload)
@@ -267,9 +354,12 @@ class LatestSnapshotPublisher:
             daemon=True,
         )
         self.previews_published = 0
+        self.sound_previews_published = 0
         self.observations_published = 0
         self.failed = 0
         self._last_observation_at: float | None = None
+        self._last_thermal_captured_at: str | None = None
+        self._last_sound_captured_at: str | None = None
 
     def start(self) -> None:
         self._thread.start()
@@ -296,8 +386,22 @@ class LatestSnapshotPublisher:
                 stopping = self._stopping
             if payload is not None:
                 try:
-                    self.client.publish_preview(payload["thermal_preview"])
-                    self.previews_published += 1
+                    preview = payload.get("thermal_preview")
+                    if (
+                        preview is not None
+                        and preview["captured_at"] != self._last_thermal_captured_at
+                    ):
+                        self.client.publish_preview(preview)
+                        self.previews_published += 1
+                        self._last_thermal_captured_at = preview["captured_at"]
+                    sound_preview = payload.get("sound_preview")
+                    if (
+                        sound_preview is not None
+                        and sound_preview["captured_at"] != self._last_sound_captured_at
+                    ):
+                        self.client.publish_sound_preview(sound_preview)
+                        self.sound_previews_published += 1
+                        self._last_sound_captured_at = sound_preview["captured_at"]
                     now = time.monotonic()
                     if (
                         self._last_observation_at is None
@@ -320,72 +424,54 @@ class SensorDashboardBridge:
     def __init__(
         self,
         *,
-        drivers: Mapping[str, SensorDriver],
+        orchestrator: SensorOrchestrator,
         builder: LiveSnapshotBuilder,
         publisher: LatestSnapshotPublisher,
     ) -> None:
-        if "thermal" not in drivers:
+        if "thermal" not in orchestrator.drivers:
             raise ValueError("thermal sensor must be enabled for dashboard streaming")
-        self.drivers = dict(drivers)
+        self.orchestrator = orchestrator
         self.builder = builder
         self.publisher = publisher
-        self._running: set[str] = set()
 
-    def run(self) -> None:
+    def _observe_sample(self, sample: SensorSample) -> None:
+        self.builder.accept(sample)
+        if sample.sensor in {"thermal", "sound"}:
+            self.publisher.submit(self.builder.build(self.orchestrator.health()))
+
+    def run(
+        self,
+        *,
+        writer: SessionWriter | None = None,
+        window_count: int | None = None,
+    ) -> int:
+        if window_count is not None and window_count < 1:
+            raise ValueError("window_count must be positive")
         self.publisher.start()
-        next_due = {name: time.monotonic() for name in self.drivers}
-        last_health_log = 0.0
+        completed = 0
         try:
-            while True:
-                now = time.monotonic()
-                for name, driver in self.drivers.items():
-                    if name not in self._running:
-                        try:
-                            driver.start()
-                            self._running.add(name)
-                        except SensorError as exc:
-                            LOGGER.warning(
-                                "dashboard_sensor_start_failed sensor=%s error_type=%s",
-                                name,
-                                type(exc).__name__,
-                            )
-                            next_due[name] = now + 1.0
-                            continue
-                    if now < next_due[name]:
-                        continue
-                    sample_available = getattr(driver, "sample_available", None)
-                    if callable(sample_available) and not sample_available():
-                        continue
-                    try:
-                        sample = driver.read()
-                        self.builder.accept(sample)
-                        if sample.sensor == "thermal":
-                            reports = {
-                                sensor_name: sensor_driver.health()
-                                for sensor_name, sensor_driver in self.drivers.items()
-                            }
-                            self.publisher.submit(self.builder.build(reports))
-                    except SensorError as exc:
-                        LOGGER.warning(
-                            "dashboard_sensor_read_failed sensor=%s error_type=%s",
-                            name,
-                            type(exc).__name__,
-                        )
-                    interval = 1.0 / driver.sample_rate_hz
-                    next_due[name] = max(next_due[name] + interval, time.monotonic())
-                if now - last_health_log >= 30.0:
-                    LOGGER.info(
-                        "dashboard_bridge_running previews=%d observations=%d failed=%d",
-                        self.publisher.previews_published,
-                        self.publisher.observations_published,
-                        self.publisher.failed,
-                    )
-                    last_health_log = now
-                time.sleep(0.005)
+            while window_count is None or completed < window_count:
+                window = self.orchestrator.run_window(
+                    on_sample=self._observe_sample,
+                )
+                self.publisher.submit(
+                    self.builder.build(self.orchestrator.health())
+                )
+                if writer is not None:
+                    writer.append(window)
+                completed += 1
+                LOGGER.info(
+                    "dashboard_window_complete windows=%d previews=%d observations=%d failed=%d completeness=%.6f",
+                    completed,
+                    self.publisher.previews_published,
+                    self.publisher.observations_published,
+                    self.publisher.failed,
+                    window.payload["quality"]["completeness"],
+                )
         finally:
-            for driver in self.drivers.values():
-                driver.close()
+            self.orchestrator.close()
             self.publisher.close()
+        return completed
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -395,12 +481,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--config", required=True)
     parser.add_argument("--backend-url", required=True)
     parser.add_argument(
+        "--duration",
+        type=float,
+        help="Collect and package this many seconds while streaming; omit to stream continuously",
+    )
+    parser.add_argument("--scenario", default="unlabeled_relative_training")
+    parser.add_argument("--participant-range")
+    parser.add_argument(
+        "--notes",
+        default="relative HW-486 light and HW-485 sound; no lux or dBA calibration",
+    )
+    parser.add_argument("--known-anomaly", action="append", default=[])
+    parser.add_argument(
         "--edge-token-env",
         default="EDGE_API_TOKEN",
         help="Environment variable containing the optional bearer token",
     )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
+    if args.duration is not None and args.duration <= 0:
+        parser.error("--duration must be positive")
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s level=%(levelname)s logger=%(name)s message=%(message)s",
@@ -413,18 +513,69 @@ def main(argv: Sequence[str] | None = None) -> int:
         edge_token=os.environ.get(args.edge_token_env) or None,
     )
     bridge = SensorDashboardBridge(
-        drivers=orchestrator.drivers,
+        orchestrator=orchestrator,
         builder=LiveSnapshotBuilder(room_id=config.room_id, device_id=config.device_id),
         publisher=LatestSnapshotPublisher(
             client,
             observation_interval_s=config.window_seconds,
         ),
     )
+    writer = (
+        SessionWriter(
+            config=config,
+            scenario=args.scenario,
+            participant_range=args.participant_range,
+            notes=args.notes,
+            known_anomalies=args.known_anomaly,
+        )
+        if args.duration is not None
+        else None
+    )
+    interrupted = False
     try:
-        bridge.run()
+        bridge.run(
+            writer=writer,
+            window_count=(
+                math.ceil(args.duration / config.window_seconds)
+                if args.duration is not None
+                else None
+            ),
+        )
     except KeyboardInterrupt:
+        interrupted = True
         LOGGER.info("dashboard_bridge_stopped")
-    return 0
+    if writer is None:
+        return 0
+    session_path = writer.finalize()
+    report = validate_session(session_path)
+    archive_path = None
+    archive_sha256 = None
+    if report.valid:
+        archive_path, archive_sha256 = create_session_archive(session_path)
+    enforce_session_retention(
+        config.storage.data_dir,
+        max_sessions=config.storage.max_sessions,
+        max_age_days=config.storage.retention_days,
+    )
+    print(
+        json.dumps(
+            {
+                "session_id": writer.session_id,
+                "session_path": str(session_path),
+                "window_count": writer.window_count,
+                "validation": report.to_dict(),
+                "archive_path": str(archive_path) if archive_path else None,
+                "archive_sha256": archive_sha256,
+                "interrupted": interrupted,
+                "raw_audio_persisted": False,
+                "light_lux_calibrated": False,
+                "sound_db_calibrated": False,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0 if report.valid and writer.window_count > 0 else 1
 
 
 if __name__ == "__main__":
