@@ -75,6 +75,7 @@ def test_firmware_matches_identified_sensor_models_and_pins() -> None:
     assert "kI2cSdaPin = 21" in config
     assert "kI2cSclPin = 22" in config
     assert "kClimateIntervalMs = 2000" in config
+    assert "kEnableRadar = false" in config
     assert "DHT sensor library (1.4.6)" in profile
     assert "Adafruit AHTX0" not in profile
     assert "ESP_I2S" not in source

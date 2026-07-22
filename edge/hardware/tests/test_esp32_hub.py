@@ -858,6 +858,26 @@ def test_bootstrap_builds_five_adapters_sharing_one_hub() -> None:
     assert isinstance(drivers["radar"], Esp32HubRadarDriver)
 
 
+def test_bootstrap_skips_radar_for_four_sensor_production_config() -> None:
+    config = config_from_dict(
+        {
+            "room_id": "room_a",
+            "device_id": "pi5-a",
+            "simulator": {"enabled": False},
+            "transport": {
+                "mode": "esp32_hub",
+                "port": "/dev/serial/by-id/esp32-test",
+            },
+            "sensors": {"radar": {"enabled": False}},
+        }
+    )
+    drivers = build_real_drivers(config, ManualClock())
+
+    assert set(drivers) == {"thermal", "sound", "light", "climate"}
+    hubs = {id(driver.hub) for driver in drivers.values()}  # type: ignore[attr-defined]
+    assert len(hubs) == 1
+
+
 def test_shared_hub_close_is_idempotent() -> None:
     serial_port = QueueSerial()
     hub = Esp32SerialHub(

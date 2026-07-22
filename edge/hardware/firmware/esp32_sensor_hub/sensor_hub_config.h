@@ -36,8 +36,9 @@ constexpr uint32_t kAudioSampleIntervalUs = 250;
 constexpr uint8_t kLightOversampleCount = 16;
 
 constexpr bool kEnableThermal = true;
-// LD2450 is connected to UART2 at 256000 8N1.
-constexpr bool kEnableRadar = true;
+// The final hardware baseline omits LD2450. UART2 support remains available in
+// the firmware source, but production builds must not advertise radar data.
+constexpr bool kEnableRadar = false;
 constexpr bool kEnableLight = true;
 constexpr bool kEnableClimate = true;
 constexpr bool kEnableAnalogSound = true;

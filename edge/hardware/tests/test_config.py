@@ -24,24 +24,14 @@ def test_example_config_loads() -> None:
     assert config.transport.mode == "direct"
 
 
-def test_real_example_config_loads_with_explicit_radar_port(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("RADAR_PORT", "/dev/serial/by-id/ld2450-test")
-    config = load_config(REAL_CONFIG)
-    assert config.simulator.enabled is False
-    assert config.sensors["radar"].options["port"] == (
-        "/dev/serial/by-id/ld2450-test"
-    )
-    assert config.sensors["radar"].options["baud_rate"] == 256000
-
-
-def test_real_example_config_rejects_missing_radar_port(
+def test_real_example_disables_retired_radar_without_a_port(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("RADAR_PORT", raising=False)
-    with pytest.raises(ValueError, match="missing environment variable: RADAR_PORT"):
-        load_config(REAL_CONFIG)
+    config = load_config(REAL_CONFIG)
+    assert config.simulator.enabled is False
+    assert config.sensors["radar"].enabled is False
+    assert config.sensors["radar"].options == {}
 
 
 def test_esp32_hub_example_uses_one_explicit_serial_port(
@@ -57,7 +47,7 @@ def test_esp32_hub_example_uses_one_explicit_serial_port(
     assert config.transport.port == "/dev/serial/by-id/usb-esp32-test"
     assert config.transport.baud_rate == 460800
     assert "port" not in config.sensors["radar"].options
-    assert config.sensors["radar"].enabled is True
+    assert config.sensors["radar"].enabled is False
     assert config.sensors["climate"].sample_rate_hz == 0.5
 
 
