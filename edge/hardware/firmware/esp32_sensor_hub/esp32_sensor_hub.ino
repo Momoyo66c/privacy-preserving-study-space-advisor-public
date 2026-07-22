@@ -382,31 +382,36 @@ void serviceSound(uint32_t now) {
   }
   last_sound_ms = now;
   double sum = 0.0;
+  double normalized_squares = 0.0;
+  uint16_t maximum_raw = 0;
   for (uint16_t index = 0; index < pssa_config::kAudioChunkFrames; ++index) {
     const uint16_t raw =
         static_cast<uint16_t>(analogRead(pssa_config::kSoundAdcPin));
     audio_samples[index] = raw;
     sum += raw;
+    const double normalized_raw =
+        static_cast<double>(raw) / pssa_config::kAdcMaximum;
+    normalized_squares += normalized_raw * normalized_raw;
+    if (raw > maximum_raw) {
+      maximum_raw = raw;
+    }
     delayMicroseconds(pssa_config::kAudioSampleIntervalUs);
   }
 
   const double mean_raw = sum / pssa_config::kAudioChunkFrames;
   double centered_squares = 0.0;
-  double peak = 0.0;
   for (uint16_t index = 0; index < pssa_config::kAudioChunkFrames; ++index) {
     const double centered =
         (static_cast<double>(audio_samples[index]) - mean_raw) /
         pssa_config::kAdcMaximum;
     centered_squares += centered * centered;
-    const double magnitude = fabs(centered);
-    if (magnitude > peak) {
-      peak = magnitude;
-    }
   }
   const float standard_deviation = static_cast<float>(
       sqrt(centered_squares / pssa_config::kAudioChunkFrames));
-  const float rms = standard_deviation;
-  const float peak_value = static_cast<float>(peak);
+  const float rms = static_cast<float>(
+      sqrt(normalized_squares / pssa_config::kAudioChunkFrames));
+  const float peak_value =
+      static_cast<float>(maximum_raw) / pssa_config::kAdcMaximum;
   if (!isfinite(rms) || !isfinite(standard_deviation) ||
       !isfinite(peak_value)) {
     recordFailure(sound_state, ErrorCode::kInvalidValue);

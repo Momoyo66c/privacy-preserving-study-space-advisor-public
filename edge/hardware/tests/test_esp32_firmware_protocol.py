@@ -88,3 +88,16 @@ def test_quiet_hw485_zero_baseline_is_a_valid_sample() -> None:
     assert "kSoundRailGuardCounts" not in config
     assert "const double mean_raw" in source
     assert "writeFloatLe(payload, rms)" in source
+
+
+def test_hw485_envelope_uses_zero_baseline_rms_and_raw_peak() -> None:
+    source = (FIRMWARE_ROOT / "esp32_sensor_hub.ino").read_text()
+    config = (FIRMWARE_ROOT / "sensor_hub_config.h").read_text()
+
+    assert "double normalized_squares = 0.0" in source
+    assert "uint16_t maximum_raw = 0" in source
+    assert "sqrt(normalized_squares / pssa_config::kAudioChunkFrames)" in source
+    assert "static_cast<float>(maximum_raw) / pssa_config::kAdcMaximum" in source
+    assert "kAudioChunkFrames = 400" in config
+    assert "kAudioSampleIntervalUs = 250" in config
+    assert "kSoundIntervalMs = 250" in config

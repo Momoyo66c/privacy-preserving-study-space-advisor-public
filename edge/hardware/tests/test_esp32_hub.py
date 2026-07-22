@@ -23,6 +23,7 @@ from study_space_hardware.drivers.esp32_hub import (
     Esp32HubThermalDriver,
     Esp32SerialHub,
     ReceivedHubFrame,
+    relative_sound_level,
 )
 from study_space_hardware.drivers.ld2450 import REPORT_HEADER, REPORT_TAIL
 from study_space_hardware.esp32_protocol import MessageType, ProtocolFrame, encode_frame
@@ -33,7 +34,12 @@ from study_space_hardware.orchestrator import SensorOrchestrator
 NOW = datetime(2026, 7, 20, 7, 0, tzinfo=timezone.utc)
 
 
-def _received(message_type: MessageType, payload: bytes) -> ReceivedHubFrame:
+def _received(
+    message_type: MessageType,
+    payload: bytes,
+    *,
+    monotonic_s: float = 10.0,
+) -> ReceivedHubFrame:
     return ReceivedHubFrame(
         frame=ProtocolFrame(
             message_type=message_type,
@@ -42,7 +48,7 @@ def _received(message_type: MessageType, payload: bytes) -> ReceivedHubFrame:
             payload=payload,
         ),
         received_at=NOW,
-        received_monotonic_s=10.0,
+        received_monotonic_s=monotonic_s,
     )
 
 
@@ -238,11 +244,80 @@ def test_hub_sound_driver_never_exposes_raw_audio() -> None:
         "rms",
         "std",
         "peak",
+        "relative_instant",
+        "relative_level",
         "raw_audio_persisted",
         "chunk_frames",
     }
+    assert sample.values["peak"] == pytest.approx(0.4)
+    assert sample.values["relative_instant"] == pytest.approx(
+        relative_sound_level(0.4)
+    )
+    assert sample.values["relative_level"] == pytest.approx(
+        relative_sound_level(0.4)
+    )
+    assert sample.values["relative_level"] > sample.values["peak"]
+    assert "hw485_uncalibrated_relative_log_curve" in sample.warnings
+    assert "hw485_relative_envelope_release_8s" in sample.warnings
     assert driver.raw_audio_persisted is False
     assert sample.source == "esp32-hub:hw485-relative-sound"
+
+
+def test_hw485_relative_level_is_zero_preserving_and_monotonic() -> None:
+    levels = [
+        relative_sound_level(value)
+        for value in (0.0, 0.005, 0.02, 0.1, 1.0)
+    ]
+
+    assert levels[0] == 0.0
+    assert levels == sorted(levels)
+    assert levels[-1] == pytest.approx(1.0)
+    assert 0.13 < levels[1] < 0.14
+
+
+def test_hw485_driver_holds_sparse_pulses_with_decay_without_changing_raw_values() -> None:
+    pulse_peak = 0.4
+    hub = StubHub(
+        [
+            _received(
+                MessageType.SOUND,
+                struct.pack("<fffH", 0.2, 0.05, pulse_peak, 400),
+                monotonic_s=10.0,
+            ),
+            _received(
+                MessageType.SOUND,
+                struct.pack("<fffH", 0.0, 0.0, 0.0, 400),
+                monotonic_s=11.0,
+            ),
+            _received(
+                MessageType.SOUND,
+                struct.pack("<fffH", 0.0, 0.0, 0.0, 400),
+                monotonic_s=18.0,
+            ),
+        ]
+    )
+    driver = Esp32HubSoundDriver(
+        hub=hub,  # type: ignore[arg-type]
+        max_retries=0,
+        clock=ManualClock(),
+    )
+    driver.start()
+
+    pulse = driver.read()
+    after_one_second = driver.read()
+    after_eight_seconds = driver.read()
+
+    initial_level = relative_sound_level(pulse_peak)
+    assert pulse.values["relative_level"] == pytest.approx(initial_level)
+    assert after_one_second.values["peak"] == 0.0
+    assert after_one_second.values["rms"] == 0.0
+    assert after_one_second.values["relative_instant"] == 0.0
+    assert after_one_second.values["relative_level"] == pytest.approx(
+        initial_level * math.exp(-1.0 / 8.0)
+    )
+    assert after_eight_seconds.values["relative_level"] == pytest.approx(
+        initial_level * math.exp(-1.0)
+    )
 
 
 @pytest.mark.parametrize(

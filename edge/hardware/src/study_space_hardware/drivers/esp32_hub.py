@@ -42,6 +42,9 @@ _LIGHT_PAYLOAD = struct.Struct("<HffB")
 _CLIMATE_PAYLOAD = struct.Struct("<ff")
 _LIGHT_FLAG_CALIBRATED_LUX = 1 << 0
 _LIGHT_KNOWN_FLAGS = _LIGHT_FLAG_CALIBRATED_LUX
+_SOUND_RELATIVE_CURVE_GAIN = 200.0
+_SOUND_ENVELOPE_RELEASE_S = 8.0
+_SOUND_ENVELOPE_ZERO_EPSILON = 1e-4
 
 _CAPABILITY_BITS = {
     int(MessageType.THERMAL): 1 << 0,
@@ -50,6 +53,15 @@ _CAPABILITY_BITS = {
     int(MessageType.LIGHT): 1 << 3,
     int(MessageType.CLIMATE): 1 << 4,
 }
+
+
+def relative_sound_level(peak: float) -> float:
+    """Map a raw HW-485 peak to an uncalibrated visible relative level."""
+
+    bounded = min(1.0, max(0.0, float(peak)))
+    return math.log1p(_SOUND_RELATIVE_CURVE_GAIN * bounded) / math.log1p(
+        _SOUND_RELATIVE_CURVE_GAIN
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -680,6 +692,30 @@ class Esp32HubSoundDriver(Esp32HubSensorDriver):
             clock=clock,
         )
         self.raw_audio_persisted = False
+        self._relative_envelope = 0.0
+        self._relative_envelope_at_s: float | None = None
+
+    def _update_relative_envelope(
+        self,
+        instant_level: float,
+        captured_monotonic_s: float,
+    ) -> float:
+        """Apply immediate attack and a short release to sparse HW-485 pulses."""
+
+        previous_at_s = self._relative_envelope_at_s
+        if previous_at_s is None:
+            envelope = instant_level
+        else:
+            elapsed_s = max(0.0, captured_monotonic_s - previous_at_s)
+            released = self._relative_envelope * math.exp(
+                -elapsed_s / _SOUND_ENVELOPE_RELEASE_S
+            )
+            envelope = max(instant_level, released)
+        if envelope < _SOUND_ENVELOPE_ZERO_EPSILON:
+            envelope = 0.0
+        self._relative_envelope = envelope
+        self._relative_envelope_at_s = captured_monotonic_s
+        return envelope
 
     def _read(self) -> SensorSample:
         received = self._receive()
@@ -696,6 +732,11 @@ class Esp32HubSoundDriver(Esp32HubSensorDriver):
             )
         if chunk_frames < 1:
             raise SensorValidationError("sound chunk_frames must be positive")
+        relative_instant = relative_sound_level(float(peak))
+        relative_level = self._update_relative_envelope(
+            relative_instant,
+            received.received_monotonic_s,
+        )
         return SensorSample(
             sensor=self.name,
             captured_at=received.received_at,
@@ -704,11 +745,23 @@ class Esp32HubSoundDriver(Esp32HubSensorDriver):
                 "rms": float(rms),
                 "std": float(std),
                 "peak": float(peak),
+                "relative_instant": relative_instant,
+                "relative_level": relative_level,
                 "raw_audio_persisted": False,
                 "chunk_frames": chunk_frames,
             },
-            units={"rms": "normalized", "std": "normalized", "peak": "normalized"},
+            units={
+                "rms": "normalized",
+                "std": "normalized",
+                "peak": "normalized",
+                "relative_instant": "relative_logarithmic",
+                "relative_level": "relative_logarithmic",
+            },
             quality=SampleQuality.VALID,
+            warnings=(
+                "hw485_uncalibrated_relative_log_curve",
+                "hw485_relative_envelope_release_8s",
+            ),
             source="esp32-hub:hw485-relative-sound",
         )
 
