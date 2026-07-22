@@ -2,7 +2,7 @@ import {
   createMockSnapshot,
   isFreshLiveSensorSnapshot,
   isLiveSensorSnapshot
-} from "./sensor-data.mjs?v=realtime-rms";
+} from "./sensor-data.mjs?v=realtime-rms-4dp";
 
 const configured = window.AIOT_CONFIG ?? {};
 const queryMode = new URLSearchParams(location.search).get("mode");
@@ -146,7 +146,7 @@ function acceptSoundPreview(preview) {
     ? preview.rms * 100
     : null;
   push(history.sound, soundRmsPct);
-  updateMetric("sound", soundRmsPct, 2, history.sound);
+  updateMetric("sound", soundRmsPct, 4, history.sound);
 }
 
 function clearLiveReadings(connectionText, message) {
@@ -266,7 +266,7 @@ async function pollSound() {
     acceptSoundPreview(preview);
   } catch {
     history.sound.length = 0;
-    updateMetric("sound", null, 2, history.sound);
+    updateMetric("sound", null, 4, history.sound);
     clearSparkline("sound");
   } finally {
     soundTimer = setTimeout(pollSound, document.hidden ? 1000 : 250);
