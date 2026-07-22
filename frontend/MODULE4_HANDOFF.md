@@ -2,11 +2,11 @@
 
 ## What changed
 
-- Added the formal deterministic recommendation adapter in
-  `backend/src/study_space_api/recommendation/`.
-- Switched `create_app()` to use `RuleBasedRecommendationAdapter` by default.
-- Kept `StubRecommendationAdapter` as the safety fallback for adapter errors.
 - Added a React/Vite dashboard in `frontend/` with mock and real API modes.
+- Added a real-backend Gate A browser test covering Module 1 simulation through
+  Module 2, Module 3 APIs, and the Dashboard.
+- The backend still uses `StubRecommendationAdapter`; the formal deterministic
+  Module 4 adapter has not been implemented yet.
 
 ## URLs and commands
 
@@ -29,6 +29,14 @@ cp .env.example .env
 npm run dev
 ```
 
+Gate A verification from the repository root:
+
+```bash
+python -m pytest -q tests/integration/test_gate_a.py
+cd frontend
+npm run gate-a:e2e
+```
+
 Dashboard URL: `http://127.0.0.1:5173`
 
 ## Configuration
@@ -36,37 +44,22 @@ Dashboard URL: `http://127.0.0.1:5173`
 - `VITE_API_MODE=mock` runs the dashboard without a backend.
 - `VITE_API_MODE=real` calls the backend at `VITE_API_BASE_URL`.
 - `VITE_REFRESH_SECONDS` controls dashboard polling.
-- LLM provider calls are abstracted server-side only. The default provider is
-  intentionally not configured and uses template fallback.
+- The current backend has no LLM provider integration.
 
 ## Recommendation behavior
 
-Ranking is always deterministic. LLM text, when later configured, can only
-replace the explanation text after validation; it cannot change rank, score,
-state, forecast or reasons.
-
-The adapter computes 0-100 subscores for:
-
-- study mode match
-- current occupancy
-- 30-minute future availability
-- brightness comfort
-- temperature/humidity comfort
-
-Distance is excluded from normalization until backend room status includes
-coordinates or another distance input. Missing environment data is excluded from
-weight normalization instead of becoming zero.
-
-Tie-breakers are deterministic: group penalty, score, freshness, confidence,
-then `room_id`.
+The current stub sorts deterministically from the backend context so that the
+API and UI can be integrated without a Module 4 algorithm. It does not yet
+implement the planned weighted subscores, quality factors, bucket ordering, or
+template/LLM explanation policy. Those behaviors must be implemented and tested
+before Gate C can pass.
 
 ## Degradation behavior
 
 - `room_state=unknown`, stale data, low confidence and degraded sensors reduce
   score and remain visible in the UI.
-- LLM timeout, missing provider, exception or unsafe output keeps the ranking
-  and uses template explanations with `LLM_TEMPLATE_FALLBACK` or
-  `LLM_OUTPUT_REJECTED`.
+- The mock UI includes LLM fallback states for demonstration; the real backend
+  does not yet implement an LLM explanation provider.
 - Backend connection failures in the frontend preserve the last successful
   dashboard data and show a non-blocking warning.
 
@@ -90,6 +83,8 @@ then `room_id`.
 ## Known limitations
 
 - Frontend dependencies must be installed before local UI tests can run.
+- Formal Module 4 recommendation ranking is still pending; Gate A intentionally
+  verifies the backend stub contract only.
 - The first UI version uses native SVG charts to avoid extra runtime packages.
 - Distance priority is displayed but disabled until location data is available
   from backend responses.

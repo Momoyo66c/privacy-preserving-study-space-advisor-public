@@ -56,6 +56,7 @@ def test_status_history_and_forecast_flow(client: TestClient, valid_observation:
     history = client.get("/api/v1/rooms/room_a/history?hours=1&bucket_minutes=5")
     assert history.status_code == 200
     assert len(history.json()["points"]) == 12
+    assert sum(point["observation_count"] for point in history.json()["points"]) == 1
     forecast = client.get("/api/v1/rooms/room_a/forecast?minutes=30")
     assert forecast.status_code == 200
     assert forecast.json()["method"] == "current_persistence"

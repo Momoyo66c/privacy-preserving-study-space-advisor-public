@@ -1,7 +1,8 @@
 # Module 4 — Recommendation and Frontend
 
-React/Vite dashboard plus the module 4 recommendation adapter integrated into
-`backend/src/study_space_api/recommendation/`.
+React/Vite dashboard with mock and real Module 3 API modes. The dashboard is
+integrated with the backend contracts; the formal Module 4 ranking adapter is
+still pending and the backend currently uses its deterministic stub.
 
 ## Frontend setup
 
@@ -25,25 +26,10 @@ Set `VITE_API_MODE=real` after the FastAPI backend is running at
 
 ## Backend recommendation adapter
 
-The default backend app now injects
-`RuleBasedRecommendationAdapter`, which implements the module 4 deterministic
-ranking. The module 3 stub remains only as the API-level fallback if the formal
-adapter raises or times out.
-
-Scoring uses this formula:
-
-```text
-dimension_weight = base_weight * (0.5 + user_priority)
-normalized_score = sum(subscore * normalized_weight)
-final_score = normalized_score * freshness_confidence_factor
-```
-
-Missing dimensions, such as distance or unavailable environment readings, are
-removed before weight normalization. They are not treated as zero.
-
-The first implementation scores mode match, current occupancy, 30-minute
-availability, brightness, and temperature/humidity comfort. Distance is disabled
-until room coordinates are available in the module 3 status response.
+The default backend app injects `StubRecommendationAdapter`. It provides stable
+ordering for contract and Gate A integration tests, but it is not the formal
+Module 4 rule-based recommendation algorithm. Formal scoring, quality factors,
+and template/LLM explanations remain Gate C work.
 
 ## Dashboard coverage
 
@@ -65,8 +51,13 @@ python -m pytest
 cd ../frontend
 npm run test
 npm run e2e
+npm run gate-a:e2e
 npm run build
 ```
+
+`gate-a:e2e` starts a temporary real backend, feeds it a Module 1 simulated
+window through Module 2, and verifies the resulting Dashboard. See
+`../tests/integration/README.md` for Python setup.
 
 ## Privacy notes
 
