@@ -5,15 +5,14 @@
 namespace pssa_config {
 
 // Thermal performance profiles are selected at compile time with
-// -DPSSA_THERMAL_PROFILE=<value>. The production build defaults to the
-// MLX90640 maximum: 64 subpages/s and 32 complete 32 x 24 frames/s.
+// -DPSSA_THERMAL_PROFILE=<value>.  The validated analytics profile remains the
+// default, so a normal build never opts into an unverified high-rate mode.
 #define PSSA_THERMAL_PROFILE_ANALYTICS 0
 #define PSSA_THERMAL_PROFILE_SMOOTH 1
 #define PSSA_THERMAL_PROFILE_LIVE_MAX 2
-#define PSSA_THERMAL_PROFILE_PRODUCTION PSSA_THERMAL_PROFILE_LIVE_MAX
 
 #ifndef PSSA_THERMAL_PROFILE
-#define PSSA_THERMAL_PROFILE PSSA_THERMAL_PROFILE_PRODUCTION
+#define PSSA_THERMAL_PROFILE PSSA_THERMAL_PROFILE_ANALYTICS
 #endif
 
 // Generic ESP32 DevKit pin allocation. Confirm the printed labels on the

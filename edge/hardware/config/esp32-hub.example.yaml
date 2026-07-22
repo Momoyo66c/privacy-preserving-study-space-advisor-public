@@ -10,19 +10,17 @@ simulator:
 transport:
   mode: esp32_hub
   port: ${ESP32_HUB_PORT}
-  # Must match the production live_max firmware profile.
-  baud_rate: 921600
+  baud_rate: 460800
   read_timeout_s: 0.05
   reconnect_delay_s: 0.25
   startup_timeout_s: 2.0
   sample_timeout_s: 0.75
-  queue_size: 256
+  queue_size: 64
 
 sensors:
   thermal:
     enabled: true
-    # MLX90640 64 subpages/s yields up to 32 complete frames/s.
-    sample_rate_hz: 32
+    sample_rate_hz: 2
     max_retries: 2
     offline_threshold: 3
     options:

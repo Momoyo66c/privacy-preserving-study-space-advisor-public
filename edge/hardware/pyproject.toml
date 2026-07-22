@@ -36,6 +36,7 @@ study-space-collect-session = "study_space_hardware.cli:collect_main"
 study-space-run-simulator = "study_space_hardware.cli:simulator_main"
 study-space-verify-session = "study_space_hardware.cli:verify_main"
 study-space-live-thermal = "study_space_hardware.live_thermal:main"
+study-space-stream-dashboard = "study_space_hardware.dashboard_bridge:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

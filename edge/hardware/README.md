@@ -182,6 +182,20 @@ ssh -N -L 8765:127.0.0.1:8765 \
 温度矩阵。按 `Ctrl-C` 停止；不要在没有访问控制的网络上把 `--host` 改为
 `0.0.0.0`。
 
+### 接入现有数据展示前后端
+
+树莓派桥接程序直接复用后端已有的 observation 和 thermal-preview 写接口。热预览按生产配置约 2 FPS 更新；温湿度、声音、热区数量和健康状态每 5 秒提交一次。桥接程序不做模块 02 推理，因此房间状态保持 `unknown`。
+
+```bash
+cd /home/pi/privacy-study-space-advisor/edge/hardware
+export ESP32_HUB_PORT=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+PYTHONPATH=src .venv/bin/python scripts/stream_dashboard.py \
+  --config config/esp32-hub.example.yaml \
+  --backend-url http://MAC_LAN_IP:8000
+```
+
+后端启用 `EDGE_API_TOKEN` 时，在 Pi 上设置同名环境变量。HW-486 未标定期间，桥接程序坚持发送 `light_lux=null`；页面显示 `-- lx` 属于预期行为。
+
 ## ESP32 烧录与串口检查
 
 仓库提供最小 ESP32 串口烟雾固件，用于确认树莓派能够识别、编译、烧录和读取开发板。固件不采集传感器数据，也不连接网络。操作命令和成功输出见 [`firmware/README.md`](firmware/README.md)。

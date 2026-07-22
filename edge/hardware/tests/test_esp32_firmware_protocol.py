@@ -136,34 +136,6 @@ def test_thermal_profiles_compile_with_safe_bandwidth(
     subprocess.run([str(binary)], check=True, capture_output=True, text=True)
 
 
-def test_production_thermal_profile_defaults_to_live_max(tmp_path: Path) -> None:
-    compiler = shutil.which("c++")
-    if compiler is None:
-        pytest.skip("a C++ compiler is required for thermal profile tests")
-    binary = tmp_path / "thermal-profile-production"
-    subprocess.run(
-        [
-            compiler,
-            "-std=c++17",
-            "-Wall",
-            "-Wextra",
-            "-Werror",
-            "-DEXPECT_I2C_RUNTIME_HZ=1000000",
-            "-DEXPECT_SERIAL_BAUD=921600",
-            "-DEXPECT_REFRESH_HZ=64",
-            "-DEXPECT_PUBLISH_FPS=32",
-            str(PROFILE_HARNESS),
-            f"-I{FIRMWARE_ROOT}",
-            "-o",
-            str(binary),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    subprocess.run([str(binary)], check=True, capture_output=True, text=True)
-
-
 def test_unsupported_thermal_profile_fails_at_compile_time(tmp_path: Path) -> None:
     compiler = shutil.which("c++")
     if compiler is None:

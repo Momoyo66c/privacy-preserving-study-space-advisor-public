@@ -167,7 +167,7 @@
 ## D-023：高帧率使用独立编译档位
 
 - 日期：2026-07-21
-- 状态：本地实现，待实机验证
+- 状态：实验档保留；生产选择由 D-028 确定
 - 决策：保留已完成实机验证的 `analytics` 为默认档位（8 Hz 子页、2 FPS 完整帧、400 kHz I²C、460800 baud）。新增 `smooth`（32 Hz 子页、16 FPS、1 MHz、460800 baud）和 `live_max`（64 Hz 子页、32 FPS、1 MHz、921600 baud）编译档位，不修改热帧结构和协议版本。
 - 带宽：按 1538 字节负载、协议头、CRC 和最坏 COBS 后的 1566 字节估算。编译期要求热帧最多占 UART 8N1 理论容量的 80%，为其他传感器和控制帧保留余量；未知档位直接编译失败。
 - I²C：MLX90640 初始化和 EEPROM 校准读取固定为 400 kHz，高帧率档仅在初始化成功后切换到 1 MHz。
@@ -206,3 +206,12 @@
 - 安全边界：热阵列 offline 且雷达 `not_configured` 时，窗口必须输出 `not_inference_ready:thermal_offline_without_radar`。不允许用零目标或模拟轨迹伪装真实雷达。
 - 验证：最终固件 Flash 336,072 bytes、全局内存 39,092 bytes，写后哈希通过。四项基础探测正常；10 分钟真实会话 120 窗口、`valid=true`、雷达全部 `not_configured`、媒体文件 0，结束后立即重启成功。
 - 收尾边界：`smooth` 和 `live_max` 保留为实验档，不是最终 `analytics` 生产基线的验收阻塞项。
+
+## D-028：生产使用稳定 2 FPS，并复用现有展示接口
+
+- 日期：2026-07-22
+- 状态：生效
+- 采样率：生产固件和 Pi 配置固定使用 `analytics`、460800 baud、64 帧队列和 2 Hz 热采样。`smooth`、`live_max` 继续作为实验档，不能写成已验收的生产能力。浏览器可做 60 FPS 时间插值，但页面渲染帧率不等于传感器采样率。
+- 接入方式：不新增展示前后端协议。Pi 将每个最新归一化热帧写入既有 `PUT /api/v1/edge/rooms/{room_id}/thermal-preview`，每 5 秒将温湿度、声音、热区数量和健康状态写入既有 `POST /api/v1/edge/observations`。前端继续读取既有 `GET /api/v1/rooms/{room_id}/live`。
+- 推理边界：展示桥不代替模块 02。没有模型结果时固定发送 `room_state=unknown`、`occupancy_level=unknown`、`confidence=0` 和 `DASHBOARD_ONLY_NO_MODULE2_INFERENCE`，不得伪造适宜度或占用结论。HW-486 未标定时继续发送 `light_lux=null`。
+- 实测：Pi 地址 `192.0.2.76`，Mac 后端地址 `192.0.2.106:8000`。端到端热预览约 1.94 FPS，摘要约每 5 秒一条；既有页面成功显示真实温湿度、声音和 32×24 热图。
