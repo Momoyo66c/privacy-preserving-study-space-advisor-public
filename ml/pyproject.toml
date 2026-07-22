@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "privacy-study-space-ml"
+version = "0.1.0"
+description = "Rule-based edge ML bridge for the privacy-preserving study space advisor"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "jsonschema>=4.0",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[project.scripts]
+study-space-ml-predict-window = "study_space_ml.cli:predict_window_main"
+study-space-ml-predict-jsonl = "study_space_ml.cli:predict_jsonl_main"
+study-space-ml-post-observation = "study_space_ml.cli:post_observation_main"
+study-space-ml-validate-dataset = "study_space_ml.cli:validate_dataset_main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
