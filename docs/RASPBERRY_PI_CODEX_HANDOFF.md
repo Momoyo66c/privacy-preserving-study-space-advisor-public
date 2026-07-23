@@ -347,10 +347,15 @@ systemctl --user is-active pssa-dashboard-bridge.service
 
 ## 阶段 7：启动并检查实时页面
 
-在 Mac 启动静态前端：
+在 Mac 启动 React/Vite 前端：
 
 ```bash
 cd "$PROJECT_ROOT/frontend"
+
+if [ ! -d node_modules ]; then
+  TASK_NPM_CACHE="$(mktemp -d)"
+  npm_config_cache="$TASK_NPM_CACHE" npm ci
+fi
 
 if ! lsof -nP -iTCP:5173 -sTCP:LISTEN >/dev/null; then
   screen -dmS pssa-frontend zsh -lc \

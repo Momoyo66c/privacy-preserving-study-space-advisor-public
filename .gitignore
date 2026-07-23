@@ -24,6 +24,9 @@ node_modules/
 .vite/
 coverage/
 frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/*.tsbuildinfo
 
 # IDE / OS
 .idea/

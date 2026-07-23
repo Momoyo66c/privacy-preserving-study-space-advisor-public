@@ -56,6 +56,7 @@ def test_status_history_and_forecast_flow(client: TestClient, valid_observation:
     history = client.get("/api/v1/rooms/room_a/history?hours=1&bucket_minutes=5")
     assert history.status_code == 200
     assert len(history.json()["points"]) == 12
+    assert sum(point["observation_count"] for point in history.json()["points"]) == 1
     forecast = client.get("/api/v1/rooms/room_a/forecast?minutes=30")
     assert forecast.status_code == 200
     assert forecast.json()["method"] == "current_persistence"
@@ -128,7 +129,28 @@ def test_recommendation_stub_and_record(client: TestClient, valid_observation: d
     with app.state.database.session() as session:
         record = session.query(models.RecommendationRecord).one()
         assert record.adapter_name == "module3-deterministic-stub"
+        assert record.score_breakdown_json is None
         assert "values" not in str(record.rankings_json)
+
+
+def test_anonymous_demo_endpoints_can_be_disabled(client: TestClient, app) -> None:
+    app.state.settings.allow_anonymous_demo = False
+    body = {
+        "schema_version": "1.0",
+        "profile_id": "demo-user",
+        "study_mode": "quiet",
+        "preferences": {
+            "quiet_priority": 1,
+            "low_occupancy_priority": 1,
+            "brightness_priority": 0,
+            "comfort_priority": 0,
+            "distance_priority": 0,
+        },
+        "candidate_room_ids": ["room_a"],
+    }
+    response = client.post("/api/v1/recommendations", json=body)
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "ANONYMOUS_DEMO_DISABLED"
 
 
 def test_optional_edge_bearer_token(tmp_path, valid_observation: dict) -> None:

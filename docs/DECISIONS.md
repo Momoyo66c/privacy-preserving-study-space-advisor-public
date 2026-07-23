@@ -268,3 +268,13 @@
 - 现场证据：Mac 从 `192.0.2.106` 迁移到 `198.51.100.106` 后，Pi 的常驻服务仍使用旧地址并持续记录 `dashboard_publish_failed`。
 - 决策：受版本控制的 systemd 单元从 `~/.config/pssa/dashboard-bridge.env` 读取 `PSSA_BACKEND_URL`。环境文件不进 Git，权限固定为 600；Mac IP 变化时只更新该文件并重启服务。
 - 部署边界：Pi 的项目目录是无 `.git` 部署副本。代码从 Mac 使用不带 `--delete` 的 `rsync` 同步，并排除 `.venv` 和 `data`。真实令牌、数据库和采集归档不得进入仓库。
+
+## D-035：以主线 React/Vite 为展示基线迁移模块 01
+
+- 日期：2026-07-23
+- 状态：生效
+- 背景：`module1/hardware-foundation` 与最新 `origin/main` 已分别推进。主线把展示层迁移到 React/Vite，并加入账户、偏好和推荐能力；模块 01 分支则保留真实传感器、实时声音、热图和失效数据保护。
+- 决策：使用普通 Git 合并接入 `origin/main` 的 `c0cedc8`，不变基、不强制推送。React/Vite 是唯一展示入口，旧静态页面文件删除；模块 01 的 `/live`、`/sound-preview`、32×24 热图、健康状态和过期数据清空逻辑迁入 React 页面。
+- 契约：未标定设备继续使用可选的 `sound_peak_max` 和 `light_relative_mean`；两字段加入共享 `edge_observation` Schema。`light_lux` 未标定时仍为 `null`，雷达仍为 `not_configured`，不得用零值或模拟值替代。
+- 失效语义：实时接口过期或异常时，页面立即清空温湿度、声音、光照、趋势和热图，不把数据库旧值当成当前传感器数据。
+- 验证：后端 63 项、硬件 152 项、Edge ML 9 项、前端 3 项、Gate A Python 1 项、Gate A 浏览器 1 项和常规浏览器 2 项通过；前端生产构建与全新数据库迁移通过。

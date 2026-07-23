@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base, UTCDateTime
@@ -117,3 +117,79 @@ class RecommendationRecord(Base):
     fallback_reason: Mapped[str | None] = mapped_column(String(200))
     latency_ms: Mapped[float] = mapped_column(Float, nullable=False)
     warnings_json: Mapped[list] = mapped_column(JSON, nullable=False)
+    user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    score_breakdown_json: Mapped[dict | None] = mapped_column(JSON)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    username: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    profile_id: Mapped[str] = mapped_column(
+        ForeignKey("preference_profiles.profile_id", ondelete="RESTRICT"),
+        unique=True,
+        nullable=False,
+    )
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    last_login_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    csrf_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+
+
+class LearnedPreferenceProfile(Base):
+    __tablename__ = "learned_preference_profiles"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    learning_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    quiet_priority: Mapped[float | None] = mapped_column(Float)
+    low_occupancy_priority: Mapped[float | None] = mapped_column(Float)
+    brightness_priority: Mapped[float | None] = mapped_column(Float)
+    comfort_priority: Mapped[float | None] = mapped_column(Float)
+    quiet_evidence_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    low_occupancy_evidence_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    brightness_evidence_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    comfort_evidence_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+
+
+class RoomSelectionEvent(Base):
+    __tablename__ = "room_selection_events"
+    __table_args__ = (
+        Index("ix_room_selection_events_user_recorded", "user_id", "recorded_at"),
+    )
+
+    selection_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    room_id: Mapped[str] = mapped_column(
+        ForeignKey("rooms.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    recommendation_request_id: Mapped[str | None] = mapped_column(String(128))
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, index=True)
+    selected_rank: Mapped[int | None] = mapped_column(Integer)
+    selected_score: Mapped[int | None] = mapped_column(Integer)
+    evidence_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    context_summary_json: Mapped[dict] = mapped_column(JSON, nullable=False)

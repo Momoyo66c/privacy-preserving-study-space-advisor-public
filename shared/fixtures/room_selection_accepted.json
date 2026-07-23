@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "accepted": true,
+  "selection_id": "09a8c3f3-3139-440b-a825-49b185a3b152",
+  "room_id": "room_a",
+  "recorded_at": "2026-07-22T08:30:00Z",
+  "effective_preferences": {
+    "study_mode": "quiet",
+    "quiet_priority": 0.61,
+    "low_occupancy_priority": 0.62,
+    "brightness_priority": 0.5,
+    "comfort_priority": 0.5,
+    "distance_priority": 0.0,
+    "preferred_temperature_c": 24.0
+  }
+}

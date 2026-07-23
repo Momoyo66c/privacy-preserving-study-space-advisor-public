@@ -10,6 +10,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from http.cookiejar import CookieJar
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,15 +28,27 @@ def free_port() -> int:
         return int(listener.getsockname()[1])
 
 
-def call(base_url: str, method: str, path: str, payload: dict | None = None) -> dict:
+def call(
+    base_url: str,
+    method: str,
+    path: str,
+    payload: dict | None = None,
+    *,
+    opener: urllib.request.OpenerDirector | None = None,
+    headers: dict[str, str] | None = None,
+) -> dict:
     body = json.dumps(payload).encode() if payload is not None else None
+    request_headers = dict(headers or {})
+    if body:
+        request_headers["Content-Type"] = "application/json"
     request = urllib.request.Request(
         f"{base_url}{path}",
         data=body,
         method=method,
-        headers={"Content-Type": "application/json"} if body else {},
+        headers=request_headers,
     )
-    with urllib.request.urlopen(request, timeout=10) as response:
+    request_opener = opener or urllib.request.build_opener()
+    with request_opener.open(request, timeout=10) as response:
         return json.loads(response.read())
 
 
@@ -99,10 +112,46 @@ def main() -> None:
                 return call(base_url, "POST", "/api/v1/edge/observations", payload)
 
             recommendation = {"schema_version":"1.0","profile_id":"demo-user","study_mode":"quiet","preferences":{"quiet_priority":0.8,"low_occupancy_priority":0.7,"brightness_priority":0.3,"comfort_priority":0.4,"distance_priority":0.2},"candidate_room_ids":["room_a","room_b","room_c"]}
+            authenticated_opener = urllib.request.build_opener(
+                urllib.request.HTTPCookieProcessor(CookieJar())
+            )
+            auth = call(
+                base_url,
+                "POST",
+                "/api/v1/auth/register",
+                {
+                    "schema_version": "1.0",
+                    "username": "benchmark.user",
+                    "password": "benchmark-password-only",
+                },
+                opener=authenticated_opener,
+            )
+            csrf_headers = {"X-CSRF-Token": auth["csrf_token"]}
+            selection_counter = 0
+
+            def record_selection() -> dict:
+                nonlocal selection_counter
+                selection_counter += 1
+                return call(
+                    base_url,
+                    "POST",
+                    "/api/v1/me/room-selections",
+                    {
+                        "schema_version": "1.0",
+                        "selection_id": f"00000000-0000-4000-8000-{selection_counter:012d}",
+                        "room_id": "room_a",
+                        "recommendation_request_id": None,
+                        "source": "room_detail",
+                    },
+                    opener=authenticated_opener,
+                    headers=csrf_headers,
+                )
+
             write_observation()
             call(base_url, "GET", "/api/v1/rooms/status")
             call(base_url, "GET", "/api/v1/rooms/room_a/history?hours=24&bucket_minutes=5")
             call(base_url, "POST", "/api/v1/recommendations", recommendation)
+            record_selection()
             result = {
                 "python": sys.version.split()[0],
                 "transport": "Uvicorn HTTP over 127.0.0.1",
@@ -110,6 +159,7 @@ def main() -> None:
                 "room_status_p95_ms": measure(lambda: call(base_url, "GET", "/api/v1/rooms/status"), 50),
                 "history_24h_p95_ms": measure(lambda: call(base_url, "GET", "/api/v1/rooms/room_a/history?hours=24&bucket_minutes=5"), 50),
                 "recommendation_context_p95_ms": measure(lambda: call(base_url, "POST", "/api/v1/recommendations", recommendation), 50),
+                "selection_record_p95_ms": measure(record_selection, 100),
             }
             print(json.dumps(result, indent=2))
         finally:

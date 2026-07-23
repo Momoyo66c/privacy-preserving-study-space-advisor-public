@@ -1,0 +1,34 @@
+{
+  "name": "room-state-rule-baseline",
+  "version": "0.1.0",
+  "type": "deterministic_rules",
+  "feature_schema_version": "1.0",
+  "low_confidence_threshold": 0.55,
+  "classes": [
+    "empty_or_low_activity",
+    "quiet_study_recommended",
+    "discussion_allowed",
+    "not_recommended_noisy_or_crowded"
+  ],
+  "occupancy_levels": [
+    "empty",
+    "low",
+    "medium",
+    "high"
+  ],
+  "thresholds": {
+    "empty_max_radar_targets": 0,
+    "empty_max_sound_rms_mean": 0.08,
+    "quiet_max_radar_targets": 1,
+    "quiet_max_sound_rms_mean": 0.22,
+    "discussion_max_radar_targets": 3,
+    "discussion_max_sound_rms_mean": 0.55,
+    "minimum_completeness": 0.5
+  },
+  "degradation_policy": {
+    "thermal_and_radar_unavailable": "unknown",
+    "low_confidence": "unknown",
+    "environment_missing": "keep values null and mark environment degraded"
+  },
+  "training_data": "none: rule baseline only; do not report synthetic or rule output as real model performance"
+}

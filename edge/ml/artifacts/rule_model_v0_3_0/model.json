@@ -1,0 +1,22 @@
+{
+  "model_name": "edge-rule-baseline",
+  "model_version": "0.3.0",
+  "feature_schema_version": "1.0",
+  "confidence_threshold": 0.55,
+  "thresholds": {
+    "quiet_rms_max": 0.22,
+    "discussion_rms_max": 0.55,
+    "empty_rms_max": 0.08,
+    "crowded_rms_min": 0.55,
+    "discussion_target_min": 2,
+    "crowded_target_min": 3,
+    "low_completeness": 0.7
+  },
+  "labels": [
+    "empty_or_low_activity",
+    "quiet_study_recommended",
+    "discussion_allowed",
+    "not_recommended_noisy_or_crowded"
+  ],
+  "notes": "Deterministic integration baseline. Recalibrate with study-space-ml-train-rule after labels.csv has enough real data."
+}

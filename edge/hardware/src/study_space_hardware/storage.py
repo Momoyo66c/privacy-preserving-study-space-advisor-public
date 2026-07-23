@@ -163,7 +163,7 @@ class SessionWriter:
 
     def _write_checksums(self) -> None:
         checksums = {
-            str(path.relative_to(self.path)): _sha256(path)
+            path.relative_to(self.path).as_posix(): _sha256(path)
             for path in sorted(self.path.rglob("*"))
             if path.is_file() and path != self.checksums_path
         }

@@ -1,5 +1,15 @@
 # Contract Alignment Record
 
+## Authenticated 1.0 additions
+
+| Boundary | Schema | Endpoint/consumer |
+|---|---|---|
+| Module 4 client to authenticated API | `auth_credentials.schema.json`, `auth_session_response.schema.json`, `user_response.schema.json`, `delete_result.schema.json` | register/login/session/current-user/deletion |
+| Module 4 client to personalized recommendation | `authenticated_recommendation_request.schema.json`, `me_preferences.schema.json`, `me_preference_update.schema.json` | `/api/v1/me/preferences` and `/api/v1/me/recommendations` |
+| Module 4 client to selection learning | `room_selection_request.schema.json`, `room_selection_accepted.schema.json`, `room_selection_history.schema.json` | idempotent `/api/v1/me/room-selections` |
+
+Authenticated clients never send a user ID or preference weights in recommendation requests. The backend derives both from the HttpOnly session. Selection requests use a UUID idempotency key and never accept client timestamps.
+
 Module 3 implements shared contract version `1.0`.
 
 | Boundary | Schema | Endpoint/consumer |

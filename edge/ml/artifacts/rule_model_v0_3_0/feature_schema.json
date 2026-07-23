@@ -1,0 +1,29 @@
+{
+  "feature_schema_version": "1.0",
+  "ordered_features": [
+    "thermal_frame_count",
+    "thermal_hot_region_count",
+    "thermal_missing",
+    "radar_latest_target_count",
+    "radar_max_target_count",
+    "radar_active_frame_ratio",
+    "radar_mean_abs_speed_cm_s",
+    "radar_mean_distance_mm",
+    "sound_rms_mean",
+    "sound_rms_std",
+    "sound_peak",
+    "sound_missing",
+    "light_lux",
+    "temperature_c",
+    "humidity_pct",
+    "environment_missing_count",
+    "temperature_comfort_delta",
+    "humidity_comfort_delta",
+    "quality_completeness"
+  ],
+  "privacy_notes": [
+    "No raw audio is loaded or persisted by this module.",
+    "Radar target_id is ignored for cross-window identity.",
+    "Thermal NPZ frames are reduced to aggregate statistics only."
+  ]
+}

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator, FormatChecker
 
 from study_space_hardware.dashboard_bridge import (
     DashboardClient,
@@ -26,6 +28,7 @@ from study_space_hardware.storage import SessionWriter
 
 NOW = datetime(2026, 7, 22, 8, 30, tzinfo=timezone.utc)
 EXAMPLE_CONFIG = Path(__file__).parents[1] / "config/example.yaml"
+REPOSITORY_ROOT = Path(__file__).parents[3]
 
 
 class RecordingPublisher:
@@ -175,6 +178,16 @@ def test_snapshot_builder_keeps_real_proxy_semantics() -> None:
     assert observation["model"]["name"] == "sensor-dashboard-bridge"
     assert "hw486_uncalibrated_light_proxy" in observation["warnings"]
     assert "DASHBOARD_ONLY_NO_MODULE2_INFERENCE" in observation["warnings"]
+
+    schema = json.loads(
+        (REPOSITORY_ROOT / "shared/contracts/edge_observation.schema.json").read_text()
+    )
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    errors = sorted(
+        validator.iter_errors(observation),
+        key=lambda item: list(item.path),
+    )
+    assert not errors, [error.message for error in errors]
 
 
 def test_snapshot_builder_expires_sound_peak_hold() -> None:

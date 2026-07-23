@@ -1,10 +1,10 @@
 # 当前状态
 
-更新时间：2026-07-23 11:51 SGT
+更新时间：2026-07-23 12:15 SGT
 
 ## 当前结论
 
-项目位于 `module1/hardware-foundation` 分支。四传感器功能、数据契约和真实展示接入已经完成。用户最终选择稳定 2 FPS，因此生产基线保持 `analytics`：ESP32 热帧约 2 FPS、460800 baud，Pi 通过现有后端接口发送热预览、实时声音 RMS 和 5 秒摘要。
+项目位于 `module1/hardware-foundation` 分支。最新 `origin/main`（`c0cedc8`）已经合入当前工作树，七处文本冲突全部解决。四传感器功能、数据契约和真实展示接入已经迁移到 `main` 的 React/Vite 展示架构；账户、偏好和推荐功能保持最新主线实现。用户最终选择稳定 2 FPS，因此生产基线保持 `analytics`：ESP32 热帧约 2 FPS、460800 baud，Pi 通过现有后端接口发送热预览、实时声音 RMS 和 5 秒摘要。
 
 本阶段新增 `docs/RASPBERRY_PI_CODEX_HANDOFF.md`，让新 Codex 按固定顺序恢复 Mac 后端、同步无 Git 的 Pi 部署副本、安装常驻服务、检查实时页面并在用户确认后采集打包。工作树仍保留未跟踪的 `frontend/tests/e2e.cjs` 和历史 `references/`；本次不删除、不覆盖，也不混入提交。
 
@@ -46,7 +46,8 @@
 | LD2450 去除 | 已完成 | 两份真实配置与 ESP32 固件禁用 radar；重烧哈希、四项探测、10 分钟会话和 `not_configured` 语义通过 |
 | 模块 01 最终验收 | 已完成 | 120 窗口、`valid=true`、1,180 热帧、峰值 RSS 39,040 KiB、禁止媒体 0、立即重启通过；匿名真实夹具已交付；最终 145 项标准测试和 84.30% 覆盖率通过 |
 | 生产热成像速率 | 已完成 | 放弃未完成实机验收的 32 FPS 生产切换，恢复已验证的 `analytics`；端到端实测 13 个不同热预览/6.2 秒，即约 1.94 FPS |
-| 真实传感器展示接入 | 已完成 | Pi 服务调用现有 `POST /api/v1/edge/observations` 和 `PUT /api/v1/edge/rooms/room_a/thermal-preview`；现有 `GET /api/v1/rooms/room_a/live` 与展示页无需改造 |
+| 真实传感器展示接入 | 已完成 | Pi 服务继续调用既有写入接口；React 页面轮询 `/live` 与 `/sound-preview`，显示温湿度、相对光照、当前声音 RMS、健康状态和 32×24 热图；过期或断链时立即清空读数 |
+| 最新 `main` 差异整合 | 已完成 | 合入 `c0cedc8`，解决 7 个冲突；保留主线 React/Vite、账户和偏好实现，把模块 01 实时展示迁入新页面，并让共享 Schema 接受未标定声音峰值与相对光照字段 |
 
 ## 当前风险
 
@@ -61,6 +62,7 @@
 - 当前后端的 edge 写鉴权未启用，只能在受信任的局域网内使用；正式跨网部署前必须设置 `EDGE_API_TOKEN`。
 - Pi 项目目录没有 `.git`。部署必须从 Mac 使用不带 `--delete` 的 `rsync`，并排除 `.venv` 与 `data`。
 - Mac DHCP 地址变化会使旧桥接服务持续发布失败。新服务改从权限 600 的 `~/.config/pssa/dashboard-bridge.env` 读取 `PSSA_BACKEND_URL`。
+- 最新主线整合已在本机完成并通过标准测试，但树莓派尚未部署本次 React 与契约改动；部署仍须按接管手册执行并复核真实数据。
 
 ## 最近验证
 
@@ -188,7 +190,11 @@
 - 同日确认 Pi 部署目录无 `.git`，四个关键部署文件与 Mac 当前版本 SHA-256 一致。常驻服务仍写死旧 Mac 地址，日志出现连续 `dashboard_publish_failed`；交接方案改为私有环境文件注入后端 URL。
 - 已新增面向新 Codex 的 Raspberry Pi 完整操作手册，覆盖安全 SSH、后端恢复、部署、systemd、实机探测、实时页面、用户确认门禁、五分钟采集、自动验收、归档和回传。
 - 交接改动完成标准验证：`edge/hardware` 全部 152 项测试通过，Pi 上 `systemd-analyze --user verify` 通过新服务模板，文档引用的关键文件全部存在，`git diff --check` 通过。
+- 2026-07-23 获取最新 `origin/main`（`c0cedc8`）并以普通合并方式整合；README、后端入口、后端说明、前端入口、前端说明、前端依赖和模块交接共 7 处冲突均已解决，未使用强制推送或历史重写。
+- 合并后标准验证：后端 63 项、`edge/hardware` 152 项、`edge/ml` 9 项、前端 Vitest 3 项、Gate A Python 集成 1 项、Gate A 浏览器验收 1 项、常规浏览器验收 2 项全部通过；前端生产构建和全新 SQLite 迁移 `0001 -> 0002` 通过。
+- 展示桥测试现在用共享 `edge_observation` Schema 校验真实输出；Schema 已补充可选的 `sound_peak_max` 与 `light_relative_mean`，避免实现与跨模块契约漂移。
+- Playwright Gate A 配置优先使用仓库后端虚拟环境，并支持 `GATE_A_PYTHON`，修复 macOS 环境只有 `python3` 时无法启动验收服务的问题。
 
 ## 下一步
 
-新 Codex先按 `docs/RASPBERRY_PI_CODEX_HANDOFF.md` 把 Pi 服务切换到当前 Mac 地址，恢复实时页面并让用户确认传感器数值。只有收到用户明确的开始指令后才执行五分钟正式采集；结束后交付通过整包验收的 `.tar.gz` 与 SHA-256，并恢复常驻服务。自动任务保持取消。
+把本次主线整合提交并推送到现有草稿 PR。随后由新 Codex 按 `docs/RASPBERRY_PI_CODEX_HANDOFF.md` 部署到 Pi、恢复实时页面并让用户确认传感器数值。只有收到用户明确的开始指令后才执行五分钟正式采集；结束后交付通过整包验收的 `.tar.gz` 与 SHA-256，并恢复常驻服务。自动任务保持取消。

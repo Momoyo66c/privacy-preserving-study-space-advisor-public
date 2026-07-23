@@ -1,36 +1,83 @@
-# Module 4 — Sensor Dashboard
+# Module 4: Recommendation and Sensor Dashboard
 
-零运行时依赖的本地传感器监控界面。当前页面显示温度、湿度、光照、声音强度以及 32 × 24 匿名热分布。默认使用模拟数据，后端不可用时也能独立演示。
+This React/Vite dashboard serves two jobs. Students can compare rooms and save preferences through the Module 3 API. Operators can inspect the current privacy-safe sensor summary, including a 32 x 24 thermal preview, relative sound RMS, relative light, temperature and humidity.
 
-## 安装与启动
+The backend still uses `StubRecommendationAdapter`. Formal Module 4 scoring, template explanations and the optional LLM provider remain Gate C work.
+
+## Start the dashboard
+
+Requirements:
+
+- Node.js 22
+- A running FastAPI backend for real mode
+
+Install and start:
 
 ```bash
 cd frontend
+npm ci
+cp .env.example .env
 npm run dev
 ```
 
-打开 `http://127.0.0.1:5173`。默认 `useMocks=true`，模拟数据每 900 ms 刷新一次。热图通过约 680 ms 的时间插值和浏览器高质量空间采样平滑过渡，界面按钮可随时切换平滑/原始像素显示。
+Open `http://127.0.0.1:5173`.
 
-## 切换到真实后端
+Mock mode is the default:
 
-编辑 `index.html` 中的配置，将 `useMocks` 改为 `false`；也可以直接访问 `http://127.0.0.1:5173/?mode=api`：
-
-```js
-window.AIOT_CONFIG = {
-  useMocks: false,
-  apiBaseUrl: "http://127.0.0.1:8000",
-  roomId: "room_a",
-  pollIntervalMs: 2500
-};
+```text
+VITE_API_MODE=mock
+VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_REFRESH_SECONDS=10
+VITE_LIVE_SENSOR_POLL_MS=1000
+VITE_SOUND_POLL_MS=250
 ```
 
-前端读取 `GET /api/v1/rooms/{room_id}/live`，并以 250 ms 间隔读取内存态 `GET /api/v1/rooms/{room_id}/sound-preview`。声音卡片显示当前归一化 RMS，不使用 10 秒峰值、对数放大或释放包络；该实时值不写入数据库，也不保存原始音频。模块 02 仍通过既有 observation 与 thermal-preview 写接口提供持久摘要和热预览。
+Set `VITE_API_MODE=real` after the backend is ready. The existing field URL `http://127.0.0.1:5173/?mode=api` also selects real mode, which keeps old Raspberry Pi handoff commands valid.
 
-## 检查
+## Real sensor display
+
+The React UI uses the current Module 3 endpoints:
+
+| Endpoint | Purpose | Browser interval |
+|---|---|---|
+| `GET /api/v1/rooms/{room_id}/live` | Latest room summary and in-memory thermal/sound previews | `VITE_LIVE_SENSOR_POLL_MS`, default 1000 ms |
+| `GET /api/v1/rooms/{room_id}/sound-preview` | Current HW-485 RMS window | `VITE_SOUND_POLL_MS`, default 250 ms |
+| `GET /api/v1/rooms/{room_id}/history` | Aggregated historical trend | Main dashboard refresh |
+
+The sensor panel hides preview values when the room is stale or the request fails. It never substitutes the last reading as live data. Sound uses the current RMS window, not a release envelope or historical peak. HW-486 remains an uncalibrated relative value unless `light_lux` is present.
+
+Thermal previews contain 768 normalized values. They stay in process memory for at most 30 seconds and never enter history, recommendations or the LLM request builder.
+
+## Recommendation coverage
+
+- Anonymous quiet, discussion and any-mode preferences
+- Authenticated local accounts, manual preferences and explicit room selection
+- Deterministic recommendation list with confidence, stale and degraded labels
+- Student and operations views
+- History, forecast and low-resolution thermal display
+- Mock states for offline, stale, degraded and unavailable previews
+
+The deterministic backend stub supports integration tests. It is not the final personalized ranking algorithm.
+
+## Run checks
 
 ```bash
-npm test
+cd backend
+python -m pytest
+
+cd ../frontend
+npm run test
 npm run build
+npm run e2e
+npm run gate-a:e2e
 ```
 
-页面在手机、平板和桌面使用同一套移动优先布局；所有主要按钮至少 44 px，可键盘操作，并支持 `prefers-reduced-motion`。热图只展示 32 × 24 的 0–1 归一化预览，不含绝对温度、RGB 图像或身份信息。
+`gate-a:e2e` starts a temporary backend, sends a Module 1 simulated window through Module 2 and verifies the real API in the browser. See [`../tests/integration/README.md`](../tests/integration/README.md).
+
+## Privacy limits
+
+- The UI does not collect names, email addresses or student numbers.
+- The browser never receives LLM keys.
+- No RGB image, raw audio, raw radar frame or full-temperature thermal matrix reaches recommendation code.
+- The heatmap displays only the latest 0-1 normalized 32 x 24 preview.
+- Relative sound and light values must not be labeled as calibrated dB or lux.

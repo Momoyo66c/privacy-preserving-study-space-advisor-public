@@ -1,0 +1,65 @@
+name: Gate A integration
+
+on:
+  pull_request:
+    paths:
+      - "edge/hardware/**"
+      - "edge/ml/**"
+      - "backend/**"
+      - "frontend/**"
+      - "shared/**"
+      - "tests/integration/**"
+      - ".github/workflows/gate-a-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "edge/hardware/**"
+      - "edge/ml/**"
+      - "backend/**"
+      - "frontend/**"
+      - "shared/**"
+      - "tests/integration/**"
+      - ".github/workflows/gate-a-ci.yml"
+
+jobs:
+  gate-a:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            edge/hardware/pyproject.toml
+            edge/ml/pyproject.toml
+            backend/pyproject.toml
+      - name: Install Python modules
+        run: >-
+          python -m pip install
+          -e './edge/hardware'
+          -e './edge/ml[dev,thermal]'
+          -e './backend[dev]'
+      - name: Run Module 1 to backend integration
+        run: python -m pytest -q tests/integration/test_gate_a.py
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Run frontend component tests
+        working-directory: frontend
+        run: npm run test
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Run Dashboard against the real Gate A backend
+        working-directory: frontend
+        run: npm run gate-a:e2e

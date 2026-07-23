@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AuthSessionResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "string", "const": "1.0"},
+    "user": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {"type": "string", "const": "1.0"},
+        "user_id": {"type": "string", "format": "uuid"},
+        "username": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{2,31}$"
+        },
+        "created_at": {"type": "string", "format": "date-time"}
+      },
+      "required": ["schema_version", "user_id", "username", "created_at"]
+    },
+    "csrf_token": {"type": "string", "minLength": 20},
+    "expires_at": {"type": "string", "format": "date-time"}
+  },
+  "required": ["schema_version", "user", "csrf_token", "expires_at"]
+}
