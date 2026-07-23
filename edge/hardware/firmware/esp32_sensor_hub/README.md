@@ -10,12 +10,12 @@
 |---|---|---|---|
 | MLX90640 | SDA / SCL | GPIO21 / GPIO22 | I²C 地址 `0x33`；VIN 接 3V3，GND 共地 |
 | HW-507/DHT11 | S | GPIO27 | `+` 接 3V3，`-` 接 GND；单总线，不是普通数字电平 |
-| HW-485 | AO | 经 10 kΩ/10 kΩ 分压后接 GPIO34 | 模块 `+` 接 5V、`G` 接 GND；`DO` 不连接 |
+| HW-485 | AO | 直连 GPIO34 | 模块 `+` 接 3V3、`G` 接 GND；`DO` 不连接 |
 | HW-486 | S | GPIO35 | `+` 接 3V3、`-` 接 GND；输出是未标定 ADC 代理值 |
 | 可选 LD2450 | TX / RX | GPIO16 RX2 / GPIO17 TX2 | 当前默认关闭；到货后 TX/RX 交叉连接并启用 |
 | Raspberry Pi | USB | ESP32 USB 口 | Hub 协议 `460800 8N1`；不需要额外 USB-TTL |
 
-HW-485 使用 5 V 供电时，AO 必须先经过 10 kΩ/10 kΩ 分压，不能把 AO 或 DO 直接接入 ESP32。ADC attenuation 不是过压保护。MLX90640 当前按 3.3 V 供电；首次上电前还要确认 breakout 上拉电阻没有接到 5 V。所有模块必须共地。
+当前实物的 HW-485 使用 3.3 V 供电，AO 直连 GPIO34。若改为 5 V 供电，AO 不能直连 ESP32，必须先使用合适的限压方案并实测 GPIO34 输入低于 3.3 V。ADC attenuation 不是过压保护。MLX90640 当前按 3.3 V 供电；首次上电前还要确认 breakout 上拉电阻没有接到 5 V。所有模块必须共地。
 
 ## 固件配置
 
@@ -61,4 +61,4 @@ study-space-probe-sensors --config config/esp32-hub.example.yaml
 python -m pytest tests/test_esp32_firmware_protocol.py
 ```
 
-真实验收按四个模块逐个进行：DHT11 温湿度有效且读取间隔合规；HW-485 分压后最大电压低于 3.3 V 且声音变化会改变统计量；HW-486 遮挡/照射会改变 ADC 代理值但 `light_lux` 保持空；MLX90640 返回 32×24 有限温度帧。最后再确认 USB 重连和采集目录不存在音频/视频原始文件。
+真实验收按四个模块逐个进行：DHT11 温湿度有效且读取间隔合规；HW-485 使用 3V3、AO 直连 GPIO34，声音变化会改变统计量；HW-486 遮挡/照射会改变 ADC 代理值但 `light_lux` 保持空；MLX90640 返回 32×24 有限温度帧。最后再确认 USB 重连和采集目录不存在音频/视频原始文件。

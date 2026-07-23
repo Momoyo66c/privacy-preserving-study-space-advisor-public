@@ -91,6 +91,7 @@ git switch -c module1/hardware
 ## 项目文档
 
 - [共享系统契约](docs/module-specs/00_SHARED_CONTRACT.md)
+- [Raspberry Pi 接管与完成操作手册](docs/RASPBERRY_PI_CODEX_HANDOFF.md)
 - [贡献与 Pull Request 规则](CONTRIBUTING.md)
 - [项目使用与协作教程](docs/USAGE_GUIDE.md)
 

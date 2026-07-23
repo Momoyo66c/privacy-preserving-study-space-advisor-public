@@ -16,7 +16,7 @@
 | 启用传感器 | MLX90640、HW-485 声音、HW-486 光敏、HW-507/DHT11 |
 | 雷达 | 不安装；固件和真实配置禁用，契约输出 `not_configured` |
 
-HW-485 的 `AO` 必须经 10 kΩ/10 kΩ 分压中点接 GPIO34。HW-486 尚未用参考照度计标定，因此 `light_lux` 必须保持 `null`，并携带 `hw486_uncalibrated_light_proxy` 警告。
+本页记录的 10 分钟验收当时使用 HW-485 的 5V 分压方案。验收完成后，现场接线改为 3V3 供电、AO 直连 GPIO34，并重新确认实时 RMS 可产生非零值；当前接线以 `docs/RASPBERRY_PI_CODEX_HANDOFF.md` 为准。HW-486 尚未用参考照度计标定，因此 `light_lux` 必须保持 `null`，并携带 `hw486_uncalibrated_light_proxy` 警告。
 
 ## 固件构建与烧录
 

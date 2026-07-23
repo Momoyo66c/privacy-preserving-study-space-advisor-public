@@ -105,7 +105,7 @@ study-space-verify-session data/sessions/SESSION_ID
 
 ## 运行限制与可选扩展
 
-- HW-485 使用 5 V 供电时，`AO` 必须经 10 kΩ/10 kΩ 分压中点接 GPIO34。
+- 当前 HW-485 使用 3V3 供电，`AO` 直连 GPIO34，`DO` 不接。若改回 5V，必须先增加限压并测量 GPIO34 输入。
 - HW-486 未用参考照度计标定前，只能输出 ADC 代理和 warning。
 - DHT11 实际读取间隔不得快于约 2 秒。
 - `smooth` 和 `live_max` 仅是实验档位，未纳入最终生产验收。
@@ -117,3 +117,5 @@ study-space-verify-session data/sessions/SESSION_ID
 - MLX90640 通过 MIT 许可的 Adafruit 公开 API 使用，未复制其底层源码。
 - LD2450 兼容解析器参考 MIT 许可资料并重新实现，版本见 `THIRD_PARTY_NOTICES.md`。
 - 未复制检索到的 GPL/AGPL 项目源码。项目根许可证仍需维护者确认。
+
+Pi 地址发现、Mac 后端恢复、无 Git 部署副本同步、systemd 安装、实时页面验收和会话打包的完整顺序见 [`../../docs/RASPBERRY_PI_CODEX_HANDOFF.md`](../../docs/RASPBERRY_PI_CODEX_HANDOFF.md)。

@@ -109,7 +109,7 @@ edge/hardware/
 ## Raspberry Pi 5 直连兼容模式接线
 
 以下表格仅用于保留的直连驱动，不是当前 ESP32 Sensor Hub 接线。当前实物的
-传感器全部接 ESP32，Pi 只通过 USB 串口连接 ESP32；具体引脚与分压要求见
+传感器全部接 ESP32，Pi 只通过 USB 串口连接 ESP32；具体引脚与供电要求见
 `firmware/esp32_sensor_hub/README.md`。接线前断电，并确认外设电压与模块版本。
 
 | 设备 | Raspberry Pi 连接 | 说明 |
@@ -195,6 +195,12 @@ PYTHONPATH=src .venv/bin/python scripts/stream_dashboard.py \
 ```
 
 后端启用 `EDGE_API_TOKEN` 时，在 Pi 上设置同名环境变量。HW-486 未标定期间，桥接程序坚持发送 `light_lux=null`；页面显示 `-- lx` 属于预期行为。
+
+长期运行使用 `deploy/systemd/pssa-dashboard-bridge.service`。单元从 Pi 的
+`~/.config/pssa/dashboard-bridge.env` 读取 `PSSA_BACKEND_URL`，Mac DHCP 地址
+变化时只更新该环境文件并重启服务，不修改 Python 源码。完整安装、恢复、
+页面确认和边展示边采集流程见
+[`../../docs/RASPBERRY_PI_CODEX_HANDOFF.md`](../../docs/RASPBERRY_PI_CODEX_HANDOFF.md)。
 
 ## ESP32 烧录与串口检查
 
