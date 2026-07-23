@@ -70,6 +70,12 @@ class SessionWriter:
             for value in anomaly_values
             if str(value).strip()
         ]
+        sound_options = dict(config.sensors["sound"].options)
+        sound_sensor_model = (
+            "Windows microphone"
+            if sound_options.get("driver") == "remote_feature"
+            else "HW-485"
+        )
         self._metadata: dict[str, Any] = {
             "schema_version": "1.0",
             "session_id": self.session_id,
@@ -105,7 +111,7 @@ class SessionWriter:
                     "calibrated_lux": False,
                 },
                 "sound": {
-                    "sensor_model": "HW-485",
+                    "sensor_model": sound_sensor_model,
                     "unit": "relative_rms_and_peak_0_to_1",
                     "calibrated_db": False,
                 },

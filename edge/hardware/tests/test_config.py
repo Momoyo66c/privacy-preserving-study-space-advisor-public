@@ -6,13 +6,19 @@ import tomllib
 
 import pytest
 
+from study_space_hardware.bootstrap import build_esp32_hub_drivers
+from study_space_hardware.clock import ManualClock
 from study_space_hardware.config import config_from_dict, load_config
+from study_space_hardware.drivers.remote_sound import RemoteSoundFeatureDriver
 
 
 PROJECT_ROOT = Path(__file__).parents[1]
 EXAMPLE_CONFIG = PROJECT_ROOT / "config/example.yaml"
 REAL_CONFIG = PROJECT_ROOT / "config/real.example.yaml"
 ESP32_HUB_CONFIG = PROJECT_ROOT / "config/esp32-hub.example.yaml"
+WINDOWS_MIC_CONFIG = (
+    PROJECT_ROOT / "config/esp32-hub-windows-mic.example.yaml"
+)
 
 
 def test_example_config_loads() -> None:
@@ -51,6 +57,56 @@ def test_esp32_hub_example_uses_one_explicit_serial_port(
     assert "port" not in config.sensors["radar"].options
     assert config.sensors["radar"].enabled is False
     assert config.sensors["climate"].sample_rate_hz == 0.5
+
+
+def test_windows_microphone_example_keeps_receiver_on_loopback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "ESP32_HUB_PORT",
+        "/dev/serial/by-id/usb-esp32-test",
+    )
+    config = load_config(WINDOWS_MIC_CONFIG)
+
+    assert config.sensors["sound"].options["driver"] == "remote_feature"
+    assert config.sensors["sound"].sample_rate_hz == 1
+    assert config.sensors["sound"].options["listen_host"] == "127.0.0.1"
+    assert config.sensors["sound"].options["token_env"] == (
+        "PSSA_REMOTE_SOUND_TOKEN"
+    )
+
+
+def test_windows_microphone_config_builds_remote_driver_without_opening_audio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "ESP32_HUB_PORT",
+        "/dev/serial/by-id/usb-esp32-test",
+    )
+    monkeypatch.setenv(
+        "PSSA_REMOTE_SOUND_TOKEN",
+        "test-token-that-is-longer-than-24-characters",
+    )
+    config = load_config(WINDOWS_MIC_CONFIG)
+
+    drivers = build_esp32_hub_drivers(config, ManualClock())
+
+    assert isinstance(drivers["sound"], RemoteSoundFeatureDriver)
+    assert set(drivers) == {"thermal", "sound", "light", "climate"}
+
+
+def test_windows_microphone_driver_requires_runtime_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "ESP32_HUB_PORT",
+        "/dev/serial/by-id/usb-esp32-test",
+    )
+    monkeypatch.delenv("PSSA_REMOTE_SOUND_TOKEN", raising=False)
+    config = load_config(WINDOWS_MIC_CONFIG)
+
+    with pytest.raises(ValueError, match="bearer token environment"):
+        build_esp32_hub_drivers(config, ManualClock())
 
 
 def test_environment_variable_expansion(monkeypatch: pytest.MonkeyPatch) -> None:

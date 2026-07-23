@@ -1,0 +1,71 @@
+room_id: room_a
+device_id: pi5-a
+window_seconds: 5
+
+simulator:
+  enabled: false
+  scenario: quiet_study_recommended
+  random_seed: 3025
+
+transport:
+  mode: esp32_hub
+  port: ${ESP32_HUB_PORT}
+  baud_rate: 460800
+  read_timeout_s: 0.05
+  reconnect_delay_s: 0.25
+  startup_timeout_s: 2.0
+  sample_timeout_s: 0.75
+  queue_size: 64
+
+sensors:
+  thermal:
+    enabled: true
+    sample_rate_hz: 2
+    max_retries: 2
+    offline_threshold: 3
+    options:
+      minimum_c: -40
+      maximum_c: 300
+  radar:
+    enabled: false
+    sample_rate_hz: 10
+    max_retries: 1
+    offline_threshold: 3
+  sound:
+    enabled: true
+    sample_rate_hz: 1
+    max_retries: 0
+    offline_threshold: 1
+    options:
+      driver: remote_feature
+      expected_device_id: windows-laptop-mic
+      token_env: PSSA_REMOTE_SOUND_TOKEN
+      listen_host: 127.0.0.1
+      listen_port: 8766
+      max_feature_age_s: 4
+      max_future_skew_s: 2
+      offline_after_s: 8
+      max_body_bytes: 4096
+  light:
+    enabled: true
+    sample_rate_hz: 1
+    max_retries: 1
+    offline_threshold: 3
+    # Optional:
+    # options:
+    #   relative_calibration_path: /home/pi/.config/pssa/calibration/hw486-relative.json
+  climate:
+    enabled: true
+    sample_rate_hz: 0.5
+    max_retries: 1
+    offline_threshold: 3
+
+storage:
+  data_dir: data/sessions
+  retention_days: 30
+  max_sessions: 100
+
+actuation:
+  device: log
+  buzzer_enabled: false
+  options: {}

@@ -230,6 +230,38 @@ def test_snapshot_builder_publishes_nonthermal_data_when_thermal_is_offline() ->
     assert payload["observation"]["sensor_health"]["thermal"] == "offline"
 
 
+def test_snapshot_builder_clears_stale_sound_when_source_is_offline() -> None:
+    builder = LiveSnapshotBuilder(room_id="room_a", device_id="pi5-a")
+    builder.accept(_sample("sound", {"rms": 0.2, "peak": 0.6}))
+    builder.accept(
+        _sample(
+            "thermal",
+            {
+                "width": 32,
+                "height": 24,
+                "temperatures_c": (23.0,) * 768,
+            },
+        )
+    )
+    reports = {
+        "thermal": SensorHealthReport(
+            sensor="thermal",
+            status=SensorHealth.OK,
+        ),
+        "sound": SensorHealthReport(
+            sensor="sound",
+            status=SensorHealth.OFFLINE,
+        ),
+    }
+
+    payload = builder.build(reports)
+
+    assert payload["sound_preview"] is None
+    assert payload["observation"]["features"]["sound_rms_mean"] is None
+    assert payload["observation"]["features"]["sound_peak_max"] is None
+    assert payload["observation"]["sensor_health"]["sound"] == "offline"
+
+
 def test_bridge_submits_window_without_a_thermal_frame() -> None:
     orchestrator = NonThermalOrchestrator()
     publisher = RecordingPublisher()

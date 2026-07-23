@@ -18,12 +18,14 @@ int main() {
       pssa::MessageType::kHeartbeat, 1, 1000, payload.data(), payload.size(),
       encoded.data(), encoded.size());
   if (encoded_length != expected.size()) {
-    std::fprintf(stderr, "length mismatch: %zu\n", encoded_length);
+    std::fprintf(stderr, "length mismatch: %lu\n",
+                 static_cast<unsigned long>(encoded_length));
     return 1;
   }
   for (size_t index = 0; index < expected.size(); ++index) {
     if (encoded[index] != expected[index]) {
-      std::fprintf(stderr, "byte mismatch at %zu: %02x != %02x\n", index,
+      std::fprintf(stderr, "byte mismatch at %lu: %02x != %02x\n",
+                   static_cast<unsigned long>(index),
                    encoded[index], expected[index]);
       return 2;
     }
