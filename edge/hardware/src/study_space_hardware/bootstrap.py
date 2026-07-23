@@ -11,6 +11,14 @@ from .clock import Clock, SystemClock
 from .config import HardwareConfig, SensorSettings
 from .drivers.base import SensorDriver
 from .drivers.climate import ClimateDriver
+from .drivers.esp32_hub import (
+    Esp32HubClimateDriver,
+    Esp32HubLightDriver,
+    Esp32HubRadarDriver,
+    Esp32HubSoundDriver,
+    Esp32HubThermalDriver,
+    Esp32SerialHub,
+)
 from .drivers.ld2450 import LD2450Driver
 from .drivers.light import LightDriver
 from .drivers.mlx90640 import MLX90640Driver
@@ -32,6 +40,9 @@ def build_real_drivers(
     config: HardwareConfig,
     clock: Clock,
 ) -> dict[str, SensorDriver]:
+    if config.transport.mode == "esp32_hub":
+        return build_esp32_hub_drivers(config, clock)
+
     drivers: dict[str, SensorDriver] = {}
     for name, settings in config.sensors.items():
         if not settings.enabled:
@@ -48,6 +59,49 @@ def build_real_drivers(
             drivers[name] = LightDriver(**common, **options)
         elif name == "climate":
             drivers[name] = ClimateDriver(**common, **options)
+    return drivers
+
+
+def build_esp32_hub_drivers(
+    config: HardwareConfig,
+    clock: Clock,
+) -> dict[str, SensorDriver]:
+    """Build SensorDriver adapters sharing one ESP32 USB serial link."""
+
+    transport = config.transport
+    assert transport.port is not None
+    hub = Esp32SerialHub(
+        port=transport.port,
+        baud_rate=transport.baud_rate,
+        read_timeout_s=transport.read_timeout_s,
+        reconnect_delay_s=transport.reconnect_delay_s,
+        startup_timeout_s=transport.startup_timeout_s,
+        queue_size=transport.queue_size,
+        clock=clock,
+    )
+    drivers: dict[str, SensorDriver] = {}
+    for name, settings in config.sensors.items():
+        if not settings.enabled:
+            continue
+        common = {
+            **_common(settings, clock),
+            "hub": hub,
+            "sample_timeout_s": transport.sample_timeout_s,
+        }
+        if name == "thermal":
+            drivers[name] = Esp32HubThermalDriver(
+                **common,
+                minimum_c=float(settings.options.get("minimum_c", -40.0)),
+                maximum_c=float(settings.options.get("maximum_c", 300.0)),
+            )
+        elif name == "radar":
+            drivers[name] = Esp32HubRadarDriver(**common)
+        elif name == "sound":
+            drivers[name] = Esp32HubSoundDriver(**common)
+        elif name == "light":
+            drivers[name] = Esp32HubLightDriver(**common)
+        elif name == "climate":
+            drivers[name] = Esp32HubClimateDriver(**common)
     return drivers
 
 

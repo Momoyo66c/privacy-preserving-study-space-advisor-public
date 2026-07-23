@@ -82,6 +82,43 @@ def test_thermal_preview_is_separate_and_available(client: TestClient) -> None:
     assert unavailable.json() == {"schema_version":"1.0","room_id":"room_b","available":False,"captured_at":None,"width":None,"height":None,"values":None,"normalization":None,"expires_at":None,"unavailable_reason":"not_available"}
 
 
+def test_live_sensor_snapshot_combines_status_and_ephemeral_preview(client: TestClient, valid_observation: dict) -> None:
+    assert client.post("/api/v1/edge/observations", json=valid_observation).status_code == 200
+    preview = {
+        "schema_version": "1.0",
+        "room_id": "room_a",
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "width": 32,
+        "height": 24,
+        "values": [0.25] * 768,
+        "normalization": "window_min_max_clipped",
+        "expires_in_seconds": 30,
+    }
+    assert client.put("/api/v1/edge/rooms/room_a/thermal-preview", json=preview).status_code == 200
+    sound_preview = {
+        "schema_version": "1.0",
+        "room_id": "room_a",
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "rms": 0.0375,
+        "expires_in_seconds": 3,
+    }
+    assert client.put("/api/v1/edge/rooms/room_a/sound-preview", json=sound_preview).status_code == 200
+
+    response = client.get("/api/v1/rooms/room_a/live")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["schema_version"] == "1.0"
+    assert body["room"]["features"]["temperature_c"] == valid_observation["features"]["temperature_c"]
+    assert body["room"]["features"]["sound_rms_mean"] == valid_observation["features"]["sound_rms_mean"]
+    assert body["thermal_preview"]["available"] is True
+    assert body["thermal_preview"]["values"] == [0.25] * 768
+    assert body["sound_preview"]["available"] is True
+    assert body["sound_preview"]["rms"] == 0.0375
+    assert client.get("/api/v1/rooms/room_a/sound-preview").json()["rms"] == 0.0375
+    assert client.get("/api/v1/rooms/missing/live").status_code == 404
+
+
 def test_recommendation_stub_and_record(client: TestClient, valid_observation: dict, app) -> None:
     client.post("/api/v1/edge/observations", json=valid_observation)
     body = {"schema_version":"1.0","profile_id":"demo-user","study_mode":"quiet","preferences":{"quiet_priority":0.9,"low_occupancy_priority":0.8,"brightness_priority":0.4,"comfort_priority":0.5,"distance_priority":0.3},"candidate_room_ids":["room_a","room_b","room_c"]}

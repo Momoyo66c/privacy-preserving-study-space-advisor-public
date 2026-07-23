@@ -7,6 +7,9 @@ simulator:
   scenario: quiet_study_recommended
   random_seed: 3025
 
+transport:
+  mode: direct
+
 sensors:
   thermal:
     enabled: true
@@ -19,14 +22,11 @@ sensors:
       minimum_c: -40
       maximum_c: 300
   radar:
-    enabled: true
+    # The final four-sensor hardware baseline does not install a radar.
+    enabled: false
     sample_rate_hz: 10
     max_retries: 1
     offline_threshold: 3
-    options:
-      port: ${RADAR_PORT}
-      baud_rate: 256000
-      timeout_s: 0.25
   sound:
     enabled: true
     sample_rate_hz: 4

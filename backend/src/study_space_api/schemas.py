@@ -56,6 +56,8 @@ class FeatureSummary(StrictModel):
     thermal_hot_region_count: int | None = Field(default=None, ge=0)
     radar_active_target_count: int | None = Field(default=None, ge=0)
     sound_rms_mean: FiniteFloat | None = Field(default=None, ge=0, le=1)
+    sound_peak_max: FiniteFloat | None = Field(default=None, ge=0, le=1)
+    light_relative_mean: FiniteFloat | None = Field(default=None, ge=0, le=1)
     light_lux: FiniteFloat | None = Field(default=None, ge=0)
     temperature_c: FiniteFloat | None = Field(default=None, ge=-50, le=100)
     humidity_pct: FiniteFloat | None = Field(default=None, ge=0, le=100)
@@ -142,6 +144,26 @@ class ThermalPreviewResponse(StrictModel):
     unavailable_reason: str | None = None
 
 
+class SoundPreview(StrictModel):
+    schema_version: Literal["1.0"]
+    room_id: StableId
+    captured_at: datetime
+    rms: FiniteFloat = Field(ge=0, le=1)
+    expires_in_seconds: int = Field(ge=1, le=10)
+
+    _normalize_captured_at = field_validator("captured_at")(utc_datetime)
+
+
+class SoundPreviewResponse(StrictModel):
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    room_id: StableId
+    available: bool
+    captured_at: datetime | None = None
+    rms: float | None = Field(default=None, ge=0, le=1)
+    expires_at: datetime | None = None
+    unavailable_reason: str | None = None
+
+
 class RoomMetadata(StrictModel):
     schema_version: Literal["1.0"] = SCHEMA_VERSION
     id: StableId
@@ -197,6 +219,16 @@ class RoomStatus(StrictModel):
 class RoomStatusesResponse(StrictModel):
     schema_version: Literal["1.0"] = SCHEMA_VERSION
     rooms: list[RoomStatus]
+
+
+class LiveSensorSnapshotResponse(StrictModel):
+    """Dashboard-friendly projection of the latest anonymous sensor state."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    generated_at: datetime
+    room: RoomStatus
+    thermal_preview: ThermalPreviewResponse
+    sound_preview: SoundPreviewResponse
 
 
 class RoomDetailResponse(RoomStatus):

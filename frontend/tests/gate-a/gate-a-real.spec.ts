@@ -19,5 +19,8 @@ test("renders a Module 1 simulation after Module 2 and backend ingestion", async
   expect(roomA.sensor_health.thermal).toBe("ok");
   expect(recommendationPayload.recommendations[0].room_id).toBe("room_a");
   await expect(page.getByRole("heading", { name: "Quiet Commons" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sensor readings" })).toBeVisible();
+  await expect(page.getByText("Current", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sound RMS (current)")).toBeVisible();
   await expect(page.getByText("No RGB camera.")).toBeVisible();
 });

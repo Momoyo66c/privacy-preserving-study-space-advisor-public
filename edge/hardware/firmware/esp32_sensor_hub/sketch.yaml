@@ -1,0 +1,14 @@
+profiles:
+  esp32_sensor_hub:
+    notes: Reproducible ESP32-D0WD-V3 sensor hub build
+    fqbn: esp32:esp32:esp32
+    platforms:
+      - platform: esp32:esp32 (3.3.10)
+        platform_index_url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+    libraries:
+      - Adafruit BusIO (1.17.4)
+      - Adafruit Unified Sensor (1.1.15)
+      - Adafruit MLX90640 (1.1.2)
+      - DHT sensor library (1.4.6)
+
+default_profile: esp32_sensor_hub

@@ -1,11 +1,18 @@
+import { existsSync } from "node:fs";
 import { defineConfig, devices } from "@playwright/test";
+
+const localBackendPython = process.platform === "win32"
+  ? "../backend/.venv/Scripts/python.exe"
+  : "../backend/.venv/bin/python";
+const python = process.env.GATE_A_PYTHON
+  ?? (existsSync(localBackendPython) ? localBackendPython : process.platform === "win32" ? "python" : "python3");
 
 export default defineConfig({
   testDir: "./tests/gate-a",
   timeout: 30_000,
   webServer: [
     {
-      command: "python ../tests/integration/gate_a_server.py",
+      command: `"${python}" ../tests/integration/gate_a_server.py`,
       url: "http://127.0.0.1:8011/health",
       reuseExistingServer: false,
       timeout: 30_000,

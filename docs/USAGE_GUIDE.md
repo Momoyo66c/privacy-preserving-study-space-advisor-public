@@ -115,7 +115,7 @@ docs/module-specs/02_EDGE_ML_PIPELINE.md。
 
 ### 第二阶段：真实能力
 
-- 模块 1 接入 MLX90640、LD2450 和环境/声音传感器。
+- 模块 1 接入 MLX90640、声音、光照和温湿度传感器；雷达只保留可选兼容接口。
 - 模块 2 采集标注数据、训练 Random Forest 并导出模型包。
 - 模块 3 加入历史聚合和 15/30 分钟预测。
 - 模块 4 加入确定性评分、LLM adapter 和模板 fallback。
@@ -256,7 +256,7 @@ BACKEND_BASE_URL=http://<developer-machine-ip>:8000
 
 ### Gate B：真实传感器贯通
 
-- MLX90640、LD2450 和至少一个声音/环境传感器工作。
+- MLX90640、声音、光照和温湿度传感器工作；未配置雷达必须保持 `not_configured`，不能伪造零目标数据。
 - 采集连续运行 10 分钟。
 - Pi 端分类和本地指示工作。
 

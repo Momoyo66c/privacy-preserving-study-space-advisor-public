@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import tarfile
 from collections.abc import Sequence
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
@@ -55,6 +56,7 @@ class SessionWriter:
         self.path.mkdir(parents=True, exist_ok=False)
         self.thermal_dir.mkdir()
         self.windows_path = self.path / "windows.jsonl"
+        self.relative_features_path = self.path / "relative_features.jsonl"
         self.session_path = self.path / "session.json"
         self.checksums_path = self.path / "checksums.json"
         self.window_count = 0
@@ -96,6 +98,19 @@ class SessionWriter:
                     for name, settings in config.sensors.items()
                 },
             },
+            "relative_measurements": {
+                "light": {
+                    "sensor_model": "HW-486",
+                    "unit": "adc_count_and_normalized_0_to_1",
+                    "calibrated_lux": False,
+                },
+                "sound": {
+                    "sensor_model": "HW-485",
+                    "unit": "relative_rms_and_peak_0_to_1",
+                    "calibrated_db": False,
+                },
+                "file": "relative_features.jsonl",
+            },
             "window_count": 0,
         }
         self._write_json(self.session_path, self._metadata)
@@ -121,6 +136,15 @@ class SessionWriter:
             )
         with self.windows_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=True, separators=(",", ":")))
+            handle.write("\n")
+        with self.relative_features_path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    dict(window.relative_features),
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                )
+            )
             handle.write("\n")
         self.window_count += 1
         self._metadata["window_count"] = self.window_count
@@ -151,6 +175,27 @@ class SessionWriter:
             json.dumps(value, ensure_ascii=True, indent=2) + "\n",
             encoding="utf-8",
         )
+
+
+def create_session_archive(session_path: str | Path) -> tuple[Path, str]:
+    """Create a validated-session transport archive and SHA-256 sidecar."""
+
+    root = Path(session_path).expanduser().resolve()
+    if not root.is_dir() or not (root / "session.json").is_file():
+        raise ValueError("session_path must contain session.json")
+    if any(path.is_symlink() for path in root.rglob("*")):
+        raise ValueError("session archive cannot contain symbolic links")
+    archive_path = root.parent / f"{root.name}.tar.gz"
+    temporary_path = root.parent / f".{root.name}.tar.gz.tmp"
+    with tarfile.open(temporary_path, mode="w:gz") as archive:
+        archive.add(root, arcname=root.name, recursive=True)
+    temporary_path.replace(archive_path)
+    digest = _sha256(archive_path)
+    archive_path.with_suffix(archive_path.suffix + ".sha256").write_text(
+        f"{digest}  {archive_path.name}\n",
+        encoding="ascii",
+    )
+    return archive_path, digest
 
 
 def enforce_session_retention(

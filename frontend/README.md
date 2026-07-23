@@ -1,17 +1,26 @@
-# Module 4 — Recommendation and Frontend
+# Module 4: Recommendation and Sensor Dashboard
 
-React/Vite dashboard with mock and real Module 3 API modes. The dashboard is
-integrated with the backend contracts; the formal Module 4 ranking adapter is
-still pending and the backend currently uses its deterministic stub.
+This React/Vite dashboard serves two jobs. Students can compare rooms and save preferences through the Module 3 API. Operators can inspect the current privacy-safe sensor summary, including a 32 x 24 thermal preview, relative sound RMS, relative light, temperature and humidity.
 
-## Frontend setup
+The backend still uses `StubRecommendationAdapter`. Formal Module 4 scoring, template explanations and the optional LLM provider remain Gate C work.
+
+## Start the dashboard
+
+Requirements:
+
+- Node.js 22
+- A running FastAPI backend for real mode
+
+Install and start:
 
 ```bash
 cd frontend
-npm install
+npm ci
 cp .env.example .env
 npm run dev
 ```
+
+Open `http://127.0.0.1:5173`.
 
 Mock mode is the default:
 
@@ -19,30 +28,38 @@ Mock mode is the default:
 VITE_API_MODE=mock
 VITE_API_BASE_URL=http://127.0.0.1:8000
 VITE_REFRESH_SECONDS=10
+VITE_LIVE_SENSOR_POLL_MS=1000
+VITE_SOUND_POLL_MS=250
 ```
 
-Set `VITE_API_MODE=real` after the FastAPI backend is running at
-`VITE_API_BASE_URL`.
+Set `VITE_API_MODE=real` after the backend is ready. The existing field URL `http://127.0.0.1:5173/?mode=api` also selects real mode, which keeps old Raspberry Pi handoff commands valid.
 
-## Backend recommendation adapter
+## Real sensor display
 
-The default backend app injects `StubRecommendationAdapter`. It provides stable
-ordering for contract and Gate A integration tests, but it is not the formal
-Module 4 rule-based recommendation algorithm. Formal scoring, quality factors,
-and template/LLM explanations remain Gate C work.
+The React UI uses the current Module 3 endpoints:
 
-## Dashboard coverage
+| Endpoint | Purpose | Browser interval |
+|---|---|---|
+| `GET /api/v1/rooms/{room_id}/live` | Latest room summary and in-memory thermal/sound previews | `VITE_LIVE_SENSOR_POLL_MS`, default 1000 ms |
+| `GET /api/v1/rooms/{room_id}/sound-preview` | Current HW-485 RMS window | `VITE_SOUND_POLL_MS`, default 250 ms |
+| `GET /api/v1/rooms/{room_id}/history` | Aggregated historical trend | Main dashboard refresh |
 
-- Anonymous study preferences for quiet, discussion, or any mode.
-- Deterministic recommendation list with score, confidence, stale and degraded
-  labels.
-- Room detail with current status, 15/30 minute forecast, history chart and
-  32 x 24 thermal preview.
-- Mock scenarios for fresh, stale, unknown, degraded, LLM fallback, empty data
-  and unavailable thermal preview.
-- Non-blocking backend error behavior that preserves the last successful data.
+The sensor panel hides preview values when the room is stale or the request fails. It never substitutes the last reading as live data. Sound uses the current RMS window, not a release envelope or historical peak. HW-486 remains an uncalibrated relative value unless `light_lux` is present.
 
-## Tests
+Thermal previews contain 768 normalized values. They stay in process memory for at most 30 seconds and never enter history, recommendations or the LLM request builder.
+
+## Recommendation coverage
+
+- Anonymous quiet, discussion and any-mode preferences
+- Authenticated local accounts, manual preferences and explicit room selection
+- Deterministic recommendation list with confidence, stale and degraded labels
+- Student and operations views
+- History, forecast and low-resolution thermal display
+- Mock states for offline, stale, degraded and unavailable previews
+
+The deterministic backend stub supports integration tests. It is not the final personalized ranking algorithm.
+
+## Run checks
 
 ```bash
 cd backend
@@ -50,27 +67,17 @@ python -m pytest
 
 cd ../frontend
 npm run test
+npm run build
 npm run e2e
 npm run gate-a:e2e
-npm run build
 ```
 
-`gate-a:e2e` starts a temporary real backend, feeds it a Module 1 simulated
-window through Module 2, and verifies the resulting Dashboard. See
-`../tests/integration/README.md` for Python setup.
+`gate-a:e2e` starts a temporary backend, sends a Module 1 simulated window through Module 2 and verifies the real API in the browser. See [`../tests/integration/README.md`](../tests/integration/README.md).
 
-## Privacy notes
+## Privacy limits
 
-The browser never receives LLM keys. Thermal previews are displayed only as
-short-lived 32 x 24 normalized values and are never sent to the LLM request
-builder. The UI does not collect names, student IDs or email addresses.
-# Module 4 — Recommendation and Frontend
-
-负责人在此实现推荐规则、LLM fallback 和 Dashboard；推荐 adapter 的服务端部分按模块 3 约定集成到后端。
-
-开始前阅读：
-
-- `../docs/module-specs/00_SHARED_CONTRACT.md`
-- `../docs/module-specs/04_RECOMMENDATION_FRONTEND.md`
-
-实现后补充 mock/真实后端运行、构建、测试和 E2E 演示命令。
+- The UI does not collect names, email addresses or student numbers.
+- The browser never receives LLM keys.
+- No RGB image, raw audio, raw radar frame or full-temperature thermal matrix reaches recommendation code.
+- The heatmap displays only the latest 0-1 normalized 32 x 24 preview.
+- Relative sound and light values must not be labeled as calibrated dB or lux.

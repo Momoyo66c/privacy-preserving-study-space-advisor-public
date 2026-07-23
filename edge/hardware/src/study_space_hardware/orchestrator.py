@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
-from typing import Mapping
+from typing import Callable, Mapping
 
 from .actuation.base import StatusIndicator
 from .clock import Clock, SystemClock
 from .drivers.base import SensorDriver, SensorError
-from .models import CollectedWindow, SensorHealthReport
+from .models import CollectedWindow, SensorHealthReport, SensorSample
 from .windowing import WindowAccumulator
 
 
@@ -49,7 +49,11 @@ class SensorOrchestrator:
                     type(exc).__name__,
                 )
 
-    def run_window(self) -> CollectedWindow:
+    def run_window(
+        self,
+        *,
+        on_sample: Callable[[SensorSample], None] | None = None,
+    ) -> CollectedWindow:
         # ``start`` is idempotent for healthy drivers and retries any driver
         # that failed to initialize during an earlier window.
         self.start()
@@ -80,8 +84,23 @@ class SensorOrchestrator:
             ]
             for name in due_names:
                 driver = self.drivers[name]
+                sample_available = getattr(driver, "sample_available", None)
+                if callable(sample_available) and not sample_available():
+                    # ESP32 Hub adapters share a background reader.  Waiting
+                    # on one empty logical queue would starve other queues
+                    # that already contain timestamped frames.
+                    continue
                 try:
-                    accumulator.add(driver.read())
+                    sample = driver.read()
+                    accumulator.add(sample)
+                    if on_sample is not None:
+                        try:
+                            on_sample(sample)
+                        except Exception:
+                            LOGGER.exception(
+                                "sample_observer_failed sensor=%s",
+                                name,
+                            )
                 except SensorError as exc:
                     LOGGER.warning(
                         "sensor_read_failed sensor=%s error_type=%s",

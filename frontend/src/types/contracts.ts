@@ -13,6 +13,8 @@ export interface FeatureSummary {
   thermal_hot_region_count?: number | null;
   radar_active_target_count?: number | null;
   sound_rms_mean?: number | null;
+  sound_peak_max?: number | null;
+  light_relative_mean?: number | null;
   light_lux?: number | null;
   temperature_c?: number | null;
   humidity_pct?: number | null;
@@ -89,6 +91,24 @@ export interface ThermalPreviewResponse {
   normalization: string | null;
   expires_at: string | null;
   unavailable_reason: string | null;
+}
+
+export interface SoundPreviewResponse {
+  schema_version: "1.0";
+  room_id: string;
+  available: boolean;
+  captured_at: string | null;
+  rms: number | null;
+  expires_at: string | null;
+  unavailable_reason: string | null;
+}
+
+export interface LiveSensorSnapshotResponse {
+  schema_version: "1.0";
+  generated_at: string;
+  room: RoomStatus;
+  thermal_preview: ThermalPreviewResponse;
+  sound_preview: SoundPreviewResponse;
 }
 
 export interface RecommendationPreferences {

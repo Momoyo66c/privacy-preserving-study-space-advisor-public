@@ -251,6 +251,7 @@ small,
 .session-panel,
 .recommendations,
 .detail,
+.sensor-telemetry,
 .trend,
 .thermal,
 .privacy-panel,
@@ -294,6 +295,7 @@ small,
 .session-panel::after,
 .recommendations::after,
 .detail::after,
+.sensor-telemetry::after,
 .trend::after,
 .thermal::after,
 .privacy-panel::after,
@@ -324,6 +326,7 @@ small,
 .session-panel > *,
 .recommendations > *,
 .detail > *,
+.sensor-telemetry > *,
 .trend > *,
 .thermal > *,
 .privacy-panel > *,
@@ -779,11 +782,48 @@ small,
     rgb(255 59 48 / 0.12);
 }
 
-.metric-grid {
+.metric-grid,
+.sensor-metric-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
   margin: 16px 0;
+}
+
+.sensor-telemetry {
+  margin: 16px 0;
+  padding: 14px;
+}
+
+.sensor-telemetry .panel-heading {
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.sensor-link-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.76rem;
+  font-weight: 760;
+}
+
+.sensor-link-state.ok {
+  background: rgb(52 199 89 / 0.15);
+  color: #146c31;
+}
+
+.sensor-link-state.offline {
+  background: rgb(255 59 48 / 0.13);
+  color: #aa1f17;
+}
+
+.sensor-health-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
 }
 
 .metric {
@@ -920,6 +960,7 @@ circle {
 .heatmap span {
   min-width: 0;
   min-height: 0;
+  transition: background-color 650ms ease;
 }
 
 .privacy-panel ul {
@@ -1348,6 +1389,7 @@ circle {
   }
 
   .metric-grid,
+  .sensor-metric-grid,
   .split,
   .admin-kpis {
     grid-template-columns: 1fr;

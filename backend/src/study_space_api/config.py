@@ -24,7 +24,10 @@ class Settings(BaseSettings):
     recommendation_retention_days: int = Field(default=7, ge=1)
     auto_register_devices: bool = True
     edge_api_token: str | None = None
-    cors_origins: list[str] = ["http://localhost:5173"]
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
     recommendation_adapter_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
     allow_anonymous_demo: bool = True
     session_ttl_seconds: int = Field(default=28_800, ge=300, le=604_800)

@@ -1,0 +1,17 @@
+[Unit]
+Description=Privacy Study Space sensor dashboard bridge
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/privacy-study-space-advisor/edge/hardware
+Environment=PYTHONPATH=src
+Environment=ESP32_HUB_PORT=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+EnvironmentFile=%h/.config/pssa/dashboard-bridge.env
+ExecStart=/home/pi/privacy-study-space-advisor/edge/hardware/.venv/bin/python scripts/stream_dashboard.py --config config/esp32-hub.example.yaml --backend-url ${PSSA_BACKEND_URL}
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

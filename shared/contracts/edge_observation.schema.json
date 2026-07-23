@@ -85,6 +85,22 @@
           "minimum": 0,
           "maximum": 1
         },
+        "sound_peak_max": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "light_relative_mean": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
         "light_lux": {
           "type": [
             "number",

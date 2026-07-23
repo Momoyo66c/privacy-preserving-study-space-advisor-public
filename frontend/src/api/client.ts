@@ -4,6 +4,7 @@ import type {
   AuthSessionResponse,
   AuthenticatedRecommendationRequest,
   DashboardData,
+  LiveSensorSnapshotResponse,
   MePreferenceResponse,
   MePreferenceUpdate,
   RecommendationRequest,
@@ -11,11 +12,13 @@ import type {
   RoomSelectionAccepted,
   RoomSelectionRequest,
   RoomStatus,
+  SoundPreviewResponse,
   ThermalPreviewResponse,
   UserResponse,
 } from "../types/contracts";
 
-const API_MODE = import.meta.env.VITE_API_MODE ?? "mock";
+const QUERY_MODE = new URLSearchParams(window.location.search).get("mode");
+const API_MODE = QUERY_MODE === "api" ? "real" : QUERY_MODE === "mock" ? "mock" : (import.meta.env.VITE_API_MODE ?? "mock");
 const DEFAULT_API_BASE_URL = import.meta.env.DEV ? "" : "http://127.0.0.1:8000";
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL).replace(/\/$/, "");
 const CSRF_STORAGE_KEY = "pssa-csrf-token";
@@ -69,6 +72,14 @@ export async function loadDashboardData(request: RecommendationRequest): Promise
 
 export function allCandidateIds() {
   return mockRooms.map((room) => room.room_id);
+}
+
+export async function loadLiveSensorSnapshot(roomId: string) {
+  return getJson<LiveSensorSnapshotResponse>(`/api/v1/rooms/${encodeURIComponent(roomId)}/live`);
+}
+
+export async function loadSoundPreview(roomId: string) {
+  return getJson<SoundPreviewResponse>(`/api/v1/rooms/${encodeURIComponent(roomId)}/sound-preview`);
 }
 
 export async function register(credentials: Omit<AuthCredentials, "schema_version">) {

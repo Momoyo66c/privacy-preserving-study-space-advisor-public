@@ -18,7 +18,7 @@
 当前 `1.0` Schema：
 
 - `sensor_window.schema.json`：模块 1 输出、模块 2 输入的 5–10 秒传感器窗口契约，版本 `1.0`。
-- `edge_observation.schema.json`：模块 2 提交给模块 3 的脱敏观察摘要。
+- `edge_observation.schema.json`：模块 2 或受限实时桥接提交给模块 3 的脱敏观察摘要；可选相对声音峰值和相对光照字段均限制在 0 至 1。
 - `thermal_preview.schema.json`：只在内存中短时保留的 32 x 24 归一化预览。
 - `room_metadata.schema.json`、`room_status.schema.json`、`room_history.schema.json`、`forecast_result.schema.json`：模块 3 查询响应。
 - `preference_profile.schema.json`、`recommendation_*.schema.json`：模块 4 集成边界。

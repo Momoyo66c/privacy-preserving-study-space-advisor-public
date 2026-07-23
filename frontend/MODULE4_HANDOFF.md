@@ -5,6 +5,10 @@
 - Added a React/Vite dashboard in `frontend/` with mock and real API modes.
 - Added a real-backend Gate A browser test covering Module 1 simulation through
   Module 2, Module 3 APIs, and the Dashboard.
+- Merged the Module 1 live sensor view into the React application. Real mode now
+  shows current temperature, humidity, relative light, four-decimal sound RMS
+  and the short-lived 32 x 24 thermal preview. Stale or failed live reads clear
+  the sensor panel instead of displaying cached values as current.
 - The backend still uses `StubRecommendationAdapter`; the formal deterministic
   Module 4 adapter has not been implemented yet.
 
@@ -44,6 +48,9 @@ Dashboard URL: `http://127.0.0.1:5173`
 - `VITE_API_MODE=mock` runs the dashboard without a backend.
 - `VITE_API_MODE=real` calls the backend at `VITE_API_BASE_URL`.
 - `VITE_REFRESH_SECONDS` controls dashboard polling.
+- `VITE_LIVE_SENSOR_POLL_MS` controls the selected-room live snapshot interval.
+- `VITE_SOUND_POLL_MS` controls current RMS polling and defaults to 250 ms.
+- The legacy field URL `/?mode=api` also switches the React app to real mode.
 - The current backend has no LLM provider integration.
 
 ## Recommendation behavior

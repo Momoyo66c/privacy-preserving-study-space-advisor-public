@@ -4,6 +4,8 @@ import {
   defaultRequest,
   isRealApi,
   loadDashboardData,
+  loadLiveSensorSnapshot,
+  loadSoundPreview,
   login as loginUser,
   logout as logoutUser,
   recordRoomSelection,
@@ -13,10 +15,12 @@ import {
 import type {
   DashboardData,
   HistoryPoint,
+  LiveSensorSnapshotResponse,
   OccupancyLevel,
   RecommendationItem,
   RecommendationRequest,
   RoomStatus,
+  SoundPreviewResponse,
   StudyMode,
   ThermalPreviewResponse,
 } from "../types/contracts";
@@ -50,6 +54,9 @@ export function App() {
   const [authBusy, setAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [selectionMessage, setSelectionMessage] = useState<string | null>(null);
+  const [liveSnapshot, setLiveSnapshot] = useState<LiveSensorSnapshotResponse | null>(null);
+  const [soundPreview, setSoundPreview] = useState<SoundPreviewResponse | null>(null);
+  const [liveSensorError, setLiveSensorError] = useState<string | null>(null);
 
   const selectedRoom = data?.rooms.find((room) => room.room_id === selectedRoomId) ?? data?.rooms[0];
   const selectedRecommendation = data?.recommendations.recommendations.find((item) => item.room_id === selectedRoom?.room_id);
@@ -81,6 +88,73 @@ export function App() {
     }, Math.max(5, seconds) * 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    setLiveSnapshot(null);
+    setSoundPreview(null);
+    setLiveSensorError(null);
+    if (!isRealApi || !selectedRoomId) return;
+
+    let stopped = false;
+    let timer: number | undefined;
+    const configuredMs = Number(import.meta.env.VITE_LIVE_SENSOR_POLL_MS ?? 1000);
+    const pollMs = Number.isFinite(configuredMs) ? Math.max(500, configuredMs) : 1000;
+
+    async function pollLiveSensors() {
+      try {
+        const next = await loadLiveSensorSnapshot(selectedRoomId);
+        if (stopped) return;
+        if (next.room.is_stale) {
+          setLiveSnapshot(null);
+          setSoundPreview(null);
+          setLiveSensorError("Live sensor data is stale. Waiting for a new Raspberry Pi observation.");
+        } else {
+          setLiveSnapshot(next);
+          setSoundPreview(next.sound_preview);
+          setLiveSensorError(null);
+        }
+      } catch (err) {
+        if (stopped) return;
+        setLiveSnapshot(null);
+        setSoundPreview(null);
+        setLiveSensorError(err instanceof Error ? err.message : "Live sensor data could not be loaded.");
+      } finally {
+        if (!stopped) timer = window.setTimeout(() => void pollLiveSensors(), pollMs);
+      }
+    }
+
+    void pollLiveSensors();
+    return () => {
+      stopped = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [selectedRoomId]);
+
+  useEffect(() => {
+    if (!isRealApi || !selectedRoomId) return;
+
+    let stopped = false;
+    let timer: number | undefined;
+    const configuredMs = Number(import.meta.env.VITE_SOUND_POLL_MS ?? 250);
+    const pollMs = Number.isFinite(configuredMs) ? Math.max(100, configuredMs) : 250;
+
+    async function pollSound() {
+      try {
+        const next = await loadSoundPreview(selectedRoomId);
+        if (!stopped) setSoundPreview(next);
+      } catch {
+        if (!stopped) setSoundPreview(null);
+      } finally {
+        if (!stopped) timer = window.setTimeout(() => void pollSound(), pollMs);
+      }
+    }
+
+    void pollSound();
+    return () => {
+      stopped = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [selectedRoomId]);
 
   async function applyRequest(nextRequest: RecommendationRequest) {
     setRequest(nextRequest);
@@ -189,6 +263,12 @@ export function App() {
               <RoomDetail
                 room={selectedRoom}
                 recommendation={selectedRecommendation}
+                history={data.histories[selectedRoom.room_id]?.points ?? []}
+                thermalPreview={isRealApi ? liveSnapshot?.thermal_preview : data.thermalPreviews[selectedRoom.room_id]}
+                sensorRoom={isRealApi ? liveSnapshot?.room ?? null : selectedRoom}
+                soundPreview={isRealApi ? soundPreview : null}
+                sensorError={isRealApi ? liveSensorError : null}
+                liveMode={isRealApi}
                 selectionMessage={selectionMessage}
                 onChoose={data.authenticated ? (roomId) => void chooseRoom(roomId, selectedRecommendation ? "recommendation" : "room_detail") : undefined}
               />
@@ -407,11 +487,23 @@ function RecommendationRow({ item, room, selected, onSelect }: { item: Recommend
 function RoomDetail({
   room,
   recommendation,
+  history,
+  thermalPreview,
+  sensorRoom,
+  soundPreview,
+  sensorError,
+  liveMode,
   selectionMessage,
   onChoose,
 }: {
   room: RoomStatus;
   recommendation?: RecommendationItem;
+  history: HistoryPoint[];
+  thermalPreview?: ThermalPreviewResponse;
+  sensorRoom: RoomStatus | null;
+  soundPreview: SoundPreviewResponse | null;
+  sensorError: string | null;
+  liveMode: boolean;
   selectionMessage?: string | null;
   onChoose?: (roomId: string) => void;
 }) {
@@ -439,6 +531,16 @@ function RoomDetail({
         </div>
       ) : null}
       {room.is_stale ? <Notice tone="warning" text="Live signals for this room may be delayed, so check the space before walking over." /> : null}
+      <SensorTelemetry
+        room={sensorRoom}
+        soundPreview={soundPreview}
+        error={sensorError}
+        liveMode={liveMode}
+      />
+      <div className="split">
+        <TrendChart points={history} />
+        <ThermalPreview preview={thermalPreview} />
+      </div>
       {onChoose ? (
         <div className="selection-action">
           <button type="button" className="primary" onClick={() => onChoose(room.room_id)}>
@@ -448,6 +550,59 @@ function RoomDetail({
         </div>
       ) : null}
       <PrivacyPanel />
+    </section>
+  );
+}
+
+function SensorTelemetry({
+  room,
+  soundPreview,
+  error,
+  liveMode,
+}: {
+  room: RoomStatus | null;
+  soundPreview: SoundPreviewResponse | null;
+  error: string | null;
+  liveMode: boolean;
+}) {
+  const features = room?.features;
+  const currentSound = liveMode
+    ? soundPreview?.available
+      ? soundPreview.rms
+      : null
+    : features?.sound_rms_mean;
+  const light = features?.light_lux != null
+    ? `${features.light_lux.toFixed(1)} lx`
+    : features?.light_relative_mean != null
+      ? `${(features.light_relative_mean * 100).toFixed(1)}% relative`
+      : "--";
+
+  return (
+    <section className="sensor-telemetry" aria-label="Live sensor readings">
+      <div className="panel-heading">
+        <div>
+          <h3>Sensor readings</h3>
+          <span className="muted">{liveMode ? "Current Raspberry Pi data" : "Mock aggregate data"}</span>
+        </div>
+        <span className={`sensor-link-state ${room ? "ok" : "offline"}`}>{room ? "Current" : "Unavailable"}</span>
+      </div>
+      {error ? <Notice tone="danger" text={`${error} Old sensor values are hidden.`} /> : null}
+      <div className="sensor-metric-grid">
+        <Metric label="Temperature" value={formatReading(features?.temperature_c, "°C", 1)} />
+        <Metric label="Humidity" value={formatReading(features?.humidity_pct, "%", 1)} />
+        <Metric label={features?.light_lux != null ? "Light" : "Relative light"} value={light} />
+        <Metric label="Sound RMS (current)" value={formatPercent(currentSound, 4)} />
+      </div>
+      {room ? (
+        <div className="sensor-health-row" aria-label="Sensor health">
+          {Object.entries(room.sensor_health).map(([sensor, health]) => (
+            <span className={`sensor-chip ${health}`} key={sensor}>
+              {sensor}
+              <small>{health}</small>
+            </span>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -815,6 +970,14 @@ function heatColor(value: number) {
   const hue = 205 - clamped * 175;
   const light = 92 - clamped * 42;
   return `hsl(${hue} 80% ${light}%)`;
+}
+
+function formatReading(value: number | null | undefined, unit: string, decimals: number) {
+  return value == null || !Number.isFinite(value) ? "--" : `${value.toFixed(decimals)}${unit}`;
+}
+
+function formatPercent(value: number | null | undefined, decimals: number) {
+  return value == null || !Number.isFinite(value) ? "--" : `${(value * 100).toFixed(decimals)}%`;
 }
 
 function formatTime(value?: string) {

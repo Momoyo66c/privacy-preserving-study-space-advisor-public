@@ -14,6 +14,7 @@ from .config import Settings, get_settings
 from .database import Database
 from .errors import BodyLimitMiddleware, RequestIdMiddleware, install_exception_handlers
 from .services.auth import LoginAttemptLimiter
+from .services.sound import SoundPreviewCache
 from .services.thermal import ThermalPreviewCache
 from .user_api import router as user_router
 
@@ -34,6 +35,7 @@ def create_app(settings: Settings | None = None, adapter: RecommendationAdapter 
     app.state.settings = settings
     app.state.database = Database(settings.database_url)
     app.state.thermal_cache = ThermalPreviewCache()
+    app.state.sound_cache = SoundPreviewCache()
     app.state.recommendation_adapter = adapter or StubRecommendationAdapter()
     app.state.login_attempt_limiter = LoginAttemptLimiter(
         settings.login_max_failures,
