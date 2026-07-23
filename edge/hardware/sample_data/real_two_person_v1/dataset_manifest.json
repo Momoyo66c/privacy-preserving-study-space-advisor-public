@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0",
+  "dataset_id": "real-two-person-v1",
+  "captured_at": "2026-07-23",
+  "room_id": "room_a",
+  "device_id": "pi5-a",
+  "window_seconds": 5,
+  "synthetic": false,
+  "window_count": 18,
+  "session_count": 2,
+  "sensors": {
+    "thermal": "MLX90640 via ESP32 Sensor Hub",
+    "sound": "Windows microphone relative feature agent",
+    "light": "HW-486 relative two-point calibration",
+    "climate": "DHT11 via ESP32 Sensor Hub",
+    "radar": "not_configured"
+  },
+  "calibration": {
+    "sound_db_calibrated": false,
+    "light_lux_calibrated": false
+  },
+  "sessions": [
+    {
+      "session_id": "session-20260723T092556401Z-f75d59c9",
+      "label": "discussion_allowed",
+      "participant_range": "2",
+      "window_count": 9,
+      "thermal_frame_count": 44,
+      "mean_completeness": 0.7020203333333332,
+      "sound_rms_mean": 0.2847840585814126,
+      "sound_peak_mean": 0.7104799467872219,
+      "capture_archive_sha256": "64ce782c4578c0c10606c300817c21721e70a90458fe5644dadb24e41e39d08d"
+    },
+    {
+      "session_id": "session-20260723T093809359Z-c7ab61aa",
+      "label": "not_recommended_noisy_or_crowded",
+      "participant_range": "2",
+      "window_count": 9,
+      "thermal_frame_count": 44,
+      "mean_completeness": 0.6969698888888889,
+      "sound_rms_mean": 0.40753304739145263,
+      "sound_peak_mean": 0.8304370764031076,
+      "capture_archive_sha256": "1dd93fd011b4e2f8a9b8017cda2e79df9fdaf7ad28286e20f12dd3cf9b3b5f96"
+    }
+  ],
+  "privacy": {
+    "names_recorded": false,
+    "student_ids_recorded": false,
+    "raw_audio_persisted": false,
+    "rgb_images_recorded": false,
+    "personal_tracking_recorded": false
+  },
+  "limitations": [
+    "Only two short sessions and two of the four target labels are present.",
+    "Sound values are device-relative 0..1 summaries and are not dBA.",
+    "Light values are device-relative 0..1 summaries and are not lux.",
+    "The configured expected thermal rate is 2 Hz, while these sessions contain 4 to 5 thermal frames per five-second window.",
+    "This dataset is a real-data anchor and smoke-test sample, not a standalone accuracy benchmark."
+  ]
+}

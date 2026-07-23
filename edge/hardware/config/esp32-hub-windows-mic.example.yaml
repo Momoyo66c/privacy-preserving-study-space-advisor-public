@@ -27,30 +27,35 @@ sensors:
       minimum_c: -40
       maximum_c: 300
   radar:
-    # Retained in the shared contract for compatibility; no radar is installed.
     enabled: false
     sample_rate_hz: 10
     max_retries: 1
     offline_threshold: 3
   sound:
     enabled: true
-    sample_rate_hz: 4
-    max_retries: 1
-    offline_threshold: 3
-    # Optional alternative to HW485_RELATIVE_CALIBRATION_PATH:
-    # options:
-    #   relative_calibration_path: /home/pi/.config/pssa/calibration/hw485-relative-trial.json
+    sample_rate_hz: 1
+    max_retries: 0
+    offline_threshold: 1
+    options:
+      driver: remote_feature
+      expected_device_id: windows-laptop-mic
+      token_env: PSSA_REMOTE_SOUND_TOKEN
+      listen_host: 127.0.0.1
+      listen_port: 8766
+      max_feature_age_s: 4
+      max_future_skew_s: 2
+      offline_after_s: 8
+      max_body_bytes: 4096
   light:
     enabled: true
     sample_rate_hz: 1
     max_retries: 1
     offline_threshold: 3
-    # Optional alternative to HW486_RELATIVE_CALIBRATION_PATH:
+    # Optional:
     # options:
     #   relative_calibration_path: /home/pi/.config/pssa/calibration/hw486-relative.json
   climate:
     enabled: true
-    # DHT11 must not be read more often than about once every two seconds.
     sample_rate_hz: 0.5
     max_retries: 1
     offline_threshold: 3

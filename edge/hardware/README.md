@@ -39,8 +39,8 @@ python scripts/run_simulator.py \
 | 驱动接口 | `SensorDriver` Protocol 与带重试、健康状态、幂等关闭的基类 |
 | 热阵列 | MLX90640 32 × 24 帧读取、长度/NaN/温度范围校验 |
 | 雷达兼容 | HLK-LD2450 解析器和模拟测试保留；生产配置禁用，不安装实物 |
-| 声音 | 短时内存缓冲区的 RMS、标准差和峰值统计 |
-| 环境 | 直连 BH1750/AHTx0；Sensor Hub 模式支持 HW-486 未标定代理与 DHT11 |
+| 声音 | 短时内存缓冲区的 RMS、标准差和峰值统计；支持带环境底噪余量的 HW-485 相对标定 |
+| 环境 | 直连 BH1750/AHTx0；Sensor Hub 模式支持 HW-486 两点相对标定与 DHT11 |
 | 窗口 | 非重叠 5–10 秒窗口、样本计数、完整度和降级警告 |
 | 模拟器 | 7 种场景、固定随机种子、间歇故障 |
 | 本地采集 | JSONL 窗口、压缩 NPZ 热帧、SHA-256 校验和 |
@@ -76,6 +76,10 @@ edge/hardware/
 `config/example.yaml` 默认启用模拟器，适合开发和 CI。`config/real.example.yaml`
 保留 Raspberry Pi 四传感器直连兼容模式；当前实物使用 `config/esp32-hub.example.yaml`，
 由 ESP32 汇聚 MLX90640、HW-485、HW-486 和 DHT11。两份真实配置都明确设置 `radar.enabled=false`。
+
+HW-485 无可靠响应时，使用 `config/esp32-hub-windows-mic.example.yaml`：
+MLX90640、HW-486 和 DHT11 仍由 ESP32 采集，只有 `sound` 驱动改为接收
+Windows 麦克风产生的隐私摘要。公共 `sensor_window` 契约不变。
 
 所有采集类 CLI 都要求显式传入 `--config`。这样从 wheel 安装后不会依赖源码目录中的隐式路径，也能在日志和复现实验时明确记录所用配置。
 
@@ -152,6 +156,242 @@ Blinka 与 GPIO 后端均可导入，再探测真实传感器。
 
 如果使用 micro:bit，将 `actuation.device` 改为 `microbit`，并在 `actuation.options.port` 设置串口。GPIO 模式需要在选项中提供 `red_pin`、`green_pin` 和 `blue_pin`。
 
+### HW-486 两点相对标定
+
+没有参考照度计时，可以把当前 HW-486 做成设备专属的相对 0–1 标尺。暗点与
+亮点均取 12 个 ADC 样本的中位数，程序自动识别 ADC 随光照增加还是降低，
+并把区间线性映射、截断到 0–1。暗亮中位数必须至少相差 64 ADC count。
+
+该过程只改善 `light_relative_mean`，**不会生成 lux**；共享负载中的
+`light_lux` 继续为 `null`，并保留 `hw486_uncalibrated_light_proxy` 警告。
+标定文件只保存汇总统计，不保存逐样本数据。
+
+标定分两次执行，便于每一步先确认物理环境。树莓派串口只允许一个读取者，
+所以每次采样前停止展示桥，采样完成后立即恢复：
+
+```bash
+cd /home/pi/privacy-study-space-advisor/edge/hardware
+export ESP32_HUB_PORT=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+mkdir -p ~/.config/pssa/calibration
+
+# 第一步：完全遮住 HW-486 光敏元件后执行，约 12 秒
+systemctl --user stop pssa-dashboard-bridge.service
+PYTHONPATH=src .venv/bin/python scripts/calibrate_light.py capture-dark \
+  --config config/esp32-hub.example.yaml \
+  --output ~/.config/pssa/calibration/hw486-dark-staging.json
+systemctl --user start pssa-dashboard-bridge.service
+
+# 第二步：移除遮挡并打开预期使用的最亮室内照明后执行，约 12 秒
+systemctl --user stop pssa-dashboard-bridge.service
+PYTHONPATH=src .venv/bin/python scripts/calibrate_light.py capture-bright \
+  --config config/esp32-hub.example.yaml \
+  --staging ~/.config/pssa/calibration/hw486-dark-staging.json \
+  --output ~/.config/pssa/calibration/hw486-relative.json
+systemctl --user start pssa-dashboard-bridge.service
+
+# 只读校验；输出必须明确 calibrated_lux=false
+PYTHONPATH=src .venv/bin/python scripts/calibrate_light.py status \
+  --profile ~/.config/pssa/calibration/hw486-relative.json \
+  --device-id pi5-a
+```
+
+校验通过后，在权限为 600 的
+`~/.config/pssa/dashboard-bridge.env` 中加入：
+
+```bash
+HW486_RELATIVE_CALIBRATION_PATH=/home/pi/.config/pssa/calibration/hw486-relative.json
+```
+
+然后执行 `systemctl --user restart pssa-dashboard-bridge.service`。配置也可使用
+`sensors.light.options.relative_calibration_path` 指定同一路径。启动时会严格
+校验 schema、传感器型号、设备 ID、暗亮间距和派生方向；文件缺失、被篡改或
+属于其他设备时会拒绝启用，删除上述环境变量并重启即可回退到原始 ADC 比例。
+
+### HW-485 带环境余量的相对标定
+
+没有声级计时，HW-485 只能建立当前设备和安装位置专属的相对 0–1 标尺，
+不能生成 dB。安静锚点不要求绝对静音：程序采集 32 个统计窗口，以当前环境
+RMS/峰值的第 95 百分位作为底噪上界；参考锚点使用最高 10% 样本的中位数，
+且至少取 5 个高位样本，避免单次尖峰决定上限。最终零点再向上移动“底噪至参考声跨度”的 10%，给
+无法消除的环境声留出余量。
+
+每次命令先丢弃 8 个有效预热样本，容忍偶发串口超时，只保存 RMS/峰值汇总，
+不保存音频、ADC 序列或逐窗口值。先执行无需人员配合且不保存文件的预检：
+
+```bash
+systemctl --user stop pssa-dashboard-bridge.service
+PYTHONPATH=src .venv/bin/python scripts/calibrate_sound.py preflight \
+  --config config/esp32-hub.example.yaml
+systemctl --user start pssa-dashboard-bridge.service
+```
+
+预检和完整测试通过后，分两阶段建立测试 profile：
+
+```bash
+# 阶段一：暂停说话和触碰桌面即可；环境不必绝对安静，实机约 40 秒
+systemctl --user stop pssa-dashboard-bridge.service
+PYTHONPATH=src .venv/bin/python scripts/calibrate_sound.py capture-quiet \
+  --config config/esp32-hub.example.yaml \
+  --output ~/.config/pssa/calibration/hw485-quiet-staging.json
+systemctl --user start pssa-dashboard-bridge.service
+
+# 阶段二：距麦克风约 30–50 cm，持续以正常交谈音量重复固定短句，实机约 40 秒
+systemctl --user stop pssa-dashboard-bridge.service
+PYTHONPATH=src .venv/bin/python scripts/calibrate_sound.py capture-reference \
+  --config config/esp32-hub.example.yaml \
+  --staging ~/.config/pssa/calibration/hw485-quiet-staging.json \
+  --output ~/.config/pssa/calibration/hw485-relative-trial.json \
+  --noise-margin-fraction 0.10
+systemctl --user start pssa-dashboard-bridge.service
+
+PYTHONPATH=src .venv/bin/python scripts/calibrate_sound.py status \
+  --profile ~/.config/pssa/calibration/hw485-relative-trial.json \
+  --device-id pi5-a
+```
+
+RMS 和峰值的参考高位都必须明显高于环境底噪，否则拒绝生成 profile，不能
+用无响应或纯底噪数据伪造成功。测试 profile 通过以下环境变量启用：
+
+```bash
+HW485_RELATIVE_CALIBRATION_PATH=/home/pi/.config/pssa/calibration/hw485-relative-trial.json
+```
+
+启用后，展示桥的 `sound_rms_mean`、`sound_peak_max` 和内存态声音预览使用
+标定后的相对值，同时驱动保留传感器归一化统计用于诊断，并明确输出
+`calibrated_db=false`、`hw485_not_calibrated_db`。删除环境变量并重启服务
+即可无损回退到原有对数相对曲线。
+
+### HW-485 高频采样响应诊断
+
+在标定失败或只观察到瞬时峰值时，先运行隔离诊断，不应立即放宽标定门槛。
+生产固件已经在 ESP32 内对 GPIO34 执行约 4 kHz、每窗 400 点的短时 ADC
+采样，并且只上传 RMS、中心化标准差和峰值。诊断命令复用这些高频窗口，
+不刷写固件、不改变引脚、协议或其他传感器任务。
+
+诊断分为安静环境与持续参考声两次采集。文件只包含各指标的最小值、中位数、
+p95、最大值、非零窗口数、窗口数及固件采样点总数；不包含音频、ADC 序列或
+逐窗口值。比较结果区分：
+
+- `sustained_ac_response_detected`：中心化标准差和峰值都持续响应，可继续做
+  相对教室噪声方案；
+- `peak_or_impulse_only_response`：只能检测拍手等瞬态，不适合稳定 RMS 标定；
+- `dc_or_envelope_response_without_ac_variation`：只看到直流或包络变化，需要
+  检查采样语义；
+- `no_reliable_sound_response`：没有可靠声音响应。
+
+树莓派串口只允许一个读取者。以下命令用 shell trap 保证无论采集成功还是
+失败都会恢复展示桥；开始前后还应分别检查 MLX90640、HW-486 和 DHT11：
+
+```bash
+cd /home/pi/privacy-study-space-advisor/edge/hardware
+export ESP32_HUB_PORT=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+mkdir -p ~/.config/pssa/diagnostics
+
+# 第一步：保持正常环境安静；约 40 秒，只保存不可重建声音的汇总
+systemctl --user stop pssa-dashboard-bridge.service
+trap 'systemctl --user start pssa-dashboard-bridge.service' EXIT
+PYTHONPATH=src .venv/bin/python scripts/diagnose_sound.py capture \
+  --config config/esp32-hub.example.yaml \
+  --label quiet \
+  --output ~/.config/pssa/diagnostics/hw485-quiet.json
+systemctl --user start pssa-dashboard-bridge.service
+trap - EXIT
+
+# 第二步：播放或制造持续、稳定的参考声；同样不保存逐窗口值
+systemctl --user stop pssa-dashboard-bridge.service
+trap 'systemctl --user start pssa-dashboard-bridge.service' EXIT
+PYTHONPATH=src .venv/bin/python scripts/diagnose_sound.py capture \
+  --config config/esp32-hub.example.yaml \
+  --label reference \
+  --output ~/.config/pssa/diagnostics/hw485-reference.json
+systemctl --user start pssa-dashboard-bridge.service
+trap - EXIT
+
+PYTHONPATH=src .venv/bin/python scripts/diagnose_sound.py compare \
+  --quiet ~/.config/pssa/diagnostics/hw485-quiet.json \
+  --reference ~/.config/pssa/diagnostics/hw485-reference.json \
+  --device-id pi5-a
+```
+
+诊断不会启用 `HW485_RELATIVE_CALIBRATION_PATH`。若任一其他传感器在诊断后
+不再为预期健康状态，立即停止后续声音操作、重启展示桥并使用诊断前的配置；
+由于本流程不刷写 ESP32 或修改服务环境文件，不需要更改其他传感器配置。
+
+### Windows 麦克风替代 HW-485
+
+该模式适合 HW-485 无可靠响应且暂时无法更换传感器的演示。Windows 程序每次
+只在内存读取 1 秒、16 kHz、单声道缓冲区，立即计算 RMS、标准差和峰值，
+随后释放缓冲区。发送负载没有 PCM、WAV、逐样本数组或可恢复语音；接收端也
+只在内存保留最新摘要。输出是相对归一化振幅，固定声明
+`calibrated_db=false`，不得解释为 dBA。
+
+接收端集成在模块 1 的采样进程中，并强制只监听 Pi 的 `127.0.0.1:8766`。
+Windows 必须使用 SSH 本地转发访问，禁止把监听地址改为 `0.0.0.0`。负载还
+必须通过随机 Bearer token、房间/设备 ID、UUID 幂等键、0–1 有限值、最大
+4 KiB 正文和时间新鲜度校验。超过 4 秒的摘要不进入窗口；8 秒没有新摘要时
+声音健康状态变为 `offline`，其他三个传感器继续采集。
+
+Pi 的 `~/.config/pssa/dashboard-bridge.env` 使用权限 600，并加入：
+
+```bash
+PSSA_SENSOR_CONFIG=config/esp32-hub-windows-mic.example.yaml
+PSSA_REMOTE_SOUND_TOKEN=<32-byte-random-secret>
+```
+
+同一个 token 只放入当前 Windows 进程环境，不写入仓库。PowerShell 可生成：
+
+```powershell
+$bytes = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+$env:PSSA_REMOTE_SOUND_TOKEN = [Convert]::ToBase64String($bytes)
+```
+
+更新 Pi 服务配置后重载并启动：
+
+```bash
+systemctl --user daemon-reload
+systemctl --user restart pssa-dashboard-bridge.service
+systemctl --user status pssa-dashboard-bridge.service --no-pager
+```
+
+在 Windows 第一个 PowerShell 窗口建立加密隧道：
+
+```powershell
+ssh -N -L 18766:127.0.0.1:8766 pi@PI_IP
+```
+
+第二个窗口安装最小依赖、只读列出输入设备，然后再启动采集：
+
+```powershell
+cd edge\hardware
+python -m pip install -e ".[remote-sound]"
+python scripts\stream_remote_sound.py --list-devices
+python scripts\stream_remote_sound.py `
+  --url http://127.0.0.1:18766/v1/sound-features `
+  --room-id room_a `
+  --device-id windows-laptop-mic
+```
+
+`--list-devices` 不打开麦克风。正式命令第一次运行时 Windows 可能要求允许
+“桌面应用访问麦克风”；拒绝权限或关闭代理后，系统应在 8 秒内把声音标为
+`offline`，不得复用旧摘要。后端 Observation 每 5 秒发布一次，因此页面最迟
+约 13 秒显示 `offline` 和空声音值。笔记本必须与传感器留在同一教室且位置
+固定；Windows 自动增益、降噪或移动设备会改变相对标尺。
+
+首次部署可用有限窗口诊断确认麦克风确实响应。命令只在内存累计
+RMS/标准差/峰值，并在结束时打印最小值、中位数、p95 和最大值，不写文件：
+
+```powershell
+python scripts\stream_remote_sound.py `
+  --device 1 `
+  --windows 10 `
+  --diagnostic-summary
+```
+
+Pi 对收到的原始归一化 RMS/峰值应用固定的相对对数曲线，使普通声音变化在
+0–1 显示上可见；原始归一化值只保留在当前内存样本中用于诊断。该曲线没有
+参考声级计，仍然不是 dB，也不具备跨设备可比性。
+
 ### 连续刷新 MLX90640 热图
 
 本地诊断工具持续读取热阵列，并通过只监听树莓派回环地址的网页显示
@@ -194,7 +434,9 @@ PYTHONPATH=src .venv/bin/python scripts/stream_dashboard.py \
   --backend-url http://MAC_LAN_IP:8000
 ```
 
-后端启用 `EDGE_API_TOKEN` 时，在 Pi 上设置同名环境变量。HW-486 未标定期间，桥接程序坚持发送 `light_lux=null`；页面显示 `-- lx` 属于预期行为。
+后端启用 `EDGE_API_TOKEN` 时，在 Pi 上设置同名环境变量。HW-486 无论是否完成
+相对标定，桥接程序都坚持发送 `light_lux=null`；页面显示 `-- lx` 属于预期
+行为。相对标定只改变 0–1 光照条或百分比。
 
 长期运行使用 `deploy/systemd/pssa-dashboard-bridge.service`。单元从 Pi 的
 `~/.config/pssa/dashboard-bridge.env` 读取 `PSSA_BACKEND_URL`，Mac DHCP 地址
@@ -262,6 +504,17 @@ for item in SessionReader("data/sessions/SESSION_ID"):
 读取器先验证完整会话，再按 `windows.jsonl` 顺序流式加载窗口。热阵列为只读
 `float32`、形状 `(N, 768)`；没有热帧时为 `None`。元数据、窗口房间/设备、
 UTC 时间范围、非重叠顺序、NPZ 有限值和温度范围不一致时会拒绝整个会话。
+
+### 仓库内真实短时样本
+
+`sample_data/real_two_person_v1/` 包含 2026-07-23 采集的两份去身份化真实
+会话：两人正常讨论和两人持续嘈杂活动，共18个五秒窗口。数据包含完整会话
+元数据、相对声音/光照摘要和本地训练用 MLX90640 NPZ，不含原始音频、RGB
+图像、姓名或学号。
+
+数据位置、逐窗口标签、格式、校验命令、模块 2 特征流水线以及当前规则基线
+重标定方法见 [`REAL_DATASET_GUIDE.md`](REAL_DATASET_GUIDE.md)。该样本只覆盖
+四个目标标签中的两个，不能单独作为模型准确率声明。
 
 ## 窗口契约
 

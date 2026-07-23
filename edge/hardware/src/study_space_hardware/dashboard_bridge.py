@@ -167,11 +167,17 @@ class LiveSnapshotBuilder:
             key=lambda sample: sample.captured_at,
         )
         self._prune_sound_peaks(reference_sample.captured_at.timestamp())
-        sound_peak_max = max(
-            (peak for _, peak in self._sound_peaks),
-            default=None,
+        sound_health = _health_value(reports, "sound")
+        sound = (
+            self._latest.get("sound")
+            if sound_health == SensorHealth.OK.value
+            else None
         )
-        sound = self._latest.get("sound")
+        sound_peak_max = (
+            max((peak for _, peak in self._sound_peaks), default=None)
+            if sound is not None
+            else None
+        )
         light = self._latest.get("light")
         climate = self._latest.get("climate")
         warnings = {
@@ -224,7 +230,7 @@ class LiveSnapshotBuilder:
             }
         health = {
             "thermal": _health_value(reports, "thermal"),
-            "sound": _health_value(reports, "sound"),
+            "sound": sound_health,
             "light": _health_value(reports, "light"),
             "climate": _health_value(reports, "climate"),
             "radar": _health_value(reports, "radar"),
@@ -489,7 +495,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--participant-range")
     parser.add_argument(
         "--notes",
-        default="relative HW-486 light and HW-485 sound; no lux or dBA calibration",
+        default=(
+            "relative light and sound summaries; source is recorded in session "
+            "metadata; no lux or dBA calibration"
+        ),
     )
     parser.add_argument("--known-anomaly", action="append", default=[])
     parser.add_argument(
