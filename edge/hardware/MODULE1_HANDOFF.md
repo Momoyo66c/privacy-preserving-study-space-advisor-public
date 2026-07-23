@@ -245,13 +245,16 @@ study-space-verify-session data/sessions/SESSION_ID
 
 ## 运行限制与可选扩展
 
-- `sample_data/real_two_person_v1/` 已加入两份 2026-07-23 去身份化真实会话：
-  `discussion_allowed` 和 `not_recommended_noisy_or_crowded` 各9个窗口。两份
-  会话均 `valid=true`，共包含88帧 MLX90640 数据；数据清单、人工标签和训练
-  使用边界见 [`REAL_DATASET_GUIDE.md`](REAL_DATASET_GUIDE.md)。
+- `sample_data/real_classroom_v1/` 已加入四份 2026-07-23 去身份化真实会话：
+  `empty_or_low_activity`、`quiet_study_recommended`、`discussion_allowed` 和
+  `not_recommended_noisy_or_crowded` 各9个窗口。四份会话均 `valid=true`，
+  共包含176帧 MLX90640 数据；数据清单、人工标签和使用命令见
+  [`REAL_DATASET_GUIDE.md`](REAL_DATASET_GUIDE.md)，训练可行性与虚拟数据建议
+  见 [`MODEL_TRAINING_READINESS_REPORT.md`](MODEL_TRAINING_READINESS_REPORT.md)。
 - 当前模块 2 只提供确定性规则基线重标定，不提供完整的多会话 Random Forest
-  训练。真实样本只能用于接口/特征验证和声音阈值锚定；仍需补齐另外两个标签
-  并由模块 2 实现按 `session_id` 分组的混合训练与真实独立测试。
+  训练。真实样本只能用于接口/特征验证和声音阈值锚定；虽然已覆盖四个标签，
+  但每类只有一个独立会话，仍需模块 2 实现按 `session_id` 分组的混合训练，
+  并在新增的独立真实会话上完成测试。
 - 当前 HW-485 使用 3V3 供电，`AO` 直连 GPIO34，`DO` 不接。若改回 5V，必须先增加限压并测量 GPIO34 输入。
 - ESP32 生产固件已经以约 4 kHz、每窗 400 点采样 HW-485；高频诊断只读取
   既有 RMS、中心化标准差和峰值汇总，不刷写固件、不保存逐窗口值。诊断前后

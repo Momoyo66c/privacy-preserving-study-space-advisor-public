@@ -10,17 +10,18 @@ from study_space_hardware.session_validation import validate_session
 DATASET_DIR = (
     Path(__file__).resolve().parents[1]
     / "sample_data"
-    / "real_two_person_v1"
+    / "real_classroom_v1"
 )
 
 
-def test_real_two_person_sample_sessions_and_labels_are_valid() -> None:
+def test_real_classroom_sample_sessions_and_labels_are_valid() -> None:
     manifest = json.loads(
         (DATASET_DIR / "dataset_manifest.json").read_text(encoding="utf-8")
     )
     assert manifest["synthetic"] is False
-    assert manifest["window_count"] == 18
-    assert manifest["session_count"] == 2
+    assert manifest["dataset_id"] == "real-classroom-v1"
+    assert manifest["window_count"] == 36
+    assert manifest["session_count"] == 4
     assert manifest["privacy"] == {
         "names_recorded": False,
         "student_ids_recorded": False,
@@ -30,6 +31,13 @@ def test_real_two_person_sample_sessions_and_labels_are_valid() -> None:
     }
 
     expected_labels: dict[str, str] = {}
+    target_labels = {
+        "empty_or_low_activity",
+        "quiet_study_recommended",
+        "discussion_allowed",
+        "not_recommended_noisy_or_crowded",
+    }
+    assert {item["label"] for item in manifest["sessions"]} == target_labels
     for item in manifest["sessions"]:
         session_id = item["session_id"]
         report = validate_session(DATASET_DIR / session_id)
@@ -46,7 +54,7 @@ def test_real_two_person_sample_sessions_and_labels_are_valid() -> None:
     ) as handle:
         labels = list(csv.DictReader(handle))
 
-    assert len(labels) == 18
+    assert len(labels) == 36
     assert {row["window_id"] for row in labels} == set(expected_labels)
     assert all(
         row["label"] == expected_labels[row["window_id"]]
