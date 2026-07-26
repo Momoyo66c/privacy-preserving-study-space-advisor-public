@@ -1,5 +1,3 @@
-"""Module 2 edge ML package."""
+"""People-count ML pipeline for Study Space Advisor."""
 
-from .constants import MODEL_VERSION, SCHEMA_VERSION
-
-__all__ = ["MODEL_VERSION", "SCHEMA_VERSION"]
+__version__ = "0.1.0"

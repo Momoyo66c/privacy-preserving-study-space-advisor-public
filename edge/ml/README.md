@@ -1,61 +1,42 @@
-# Module 2 — Sensor Interface, Features, and Edge ML Pipeline
+# Module 2: People-Count ML Pipeline
 
-This module turns Module 1 `SensorWindow` records into privacy-preserving `EdgeObservation` payloads.
+This folder contains a complete first version of the ML pipeline for predicting classroom people count from the real sensor dataset.
 
-Current baseline:
+It supports:
 
-```text
-shared fixture / windows.jsonl / session directory
-  -> sensor-interface validation
-  -> feature extraction
-  -> deterministic rule model baseline
-  -> EdgeObservation JSON / JSONL
-  -> optional POST to backend /api/v1/edge/observations
-```
+1. Reading `windows.jsonl` and `relative_features.jsonl`.
+2. Reading thermal matrices from `.npz`.
+3. Extracting privacy-preserving features.
+4. Loading labels from `labels.csv`.
+5. Inferring numeric people count from `session.json` when labels only contain scenario labels.
+6. Training a `RandomForestRegressor`.
+7. Saving a reusable model artifact.
+8. Predicting people count for one window, one `windows.jsonl`, or a whole session directory.
 
-The baseline is deterministic because real labelled data is still being collected. It is suitable for integration testing and demos, but it is not a real-data-trained performance claim.
+## Data layout expected
 
-## What Module 1 gives us
-
-Module 2 reads either:
+After unzipping your real data, keep this shape:
 
 ```text
-shared/fixtures/sensor_window_*.json
+data/real_classroom_v1/
+├── dataset_manifest.json
+├── labels.csv
+└── session-*/
+    ├── session.json
+    ├── windows.jsonl
+    ├── relative_features.jsonl
+    └── thermal/*.npz
 ```
 
-or a collected session:
+## Install locally
 
-```text
-data/sessions/<session_id>/
-├── session.json
-├── windows.jsonl
-├── thermal/
-│   └── <window_id>.npz
-└── checksums.json
-```
-
-Each `windows.jsonl` line is one `SensorWindow` with:
-
-```text
-thermal.health + frame_count + optional frames_ref
-radar.health + sample_count + tracks[].targets[]
-sound.health + rms_mean + rms_std + peak
-environment.light_lux + temperature_c + humidity_pct
-quality.completeness + warnings
-```
-
-See `SENSOR_INTERFACE_AUDIT.md` for the detailed field-by-field interface check.
-
-## Local setup
-
-From the repository root:
+From the project root:
 
 ```bash
 cd edge/ml
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[dev]'
-python -m pytest
 ```
 
 Windows PowerShell:
@@ -65,108 +46,108 @@ cd edge/ml
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
+```
+
+## Run tests
+
+```powershell
 python -m pytest
 ```
 
-To extract thermal features from Module 1 NPZ files, install the optional thermal extra:
+## Inspect the dataset
 
-```bash
-python -m pip install -e '.[dev,thermal]'
+```powershell
+study-space-ml-count-inspect data/real_classroom_v1
+```
+```
+cd D:\college\nus_AIoT\v05
+& "python" ./edge/ml/scripts/inspect_dataset.py ./edge/ml/data/real_classroom_v1
 ```
 
-## Inspect the sensor interface
+or without installing entry points:
 
-For a real/simulated Module 1 session:
-
-```bash
-study-space-ml-interface ../../data/sessions/<session_id>
+```powershell
+python scripts/inspect_dataset.py data/real_classroom_v1
 ```
 
-This reports the detected file path, first-window shape, sensor health counts, and validation errors/warnings.
+## Extract features
 
-## Run on shared fixtures
-
-```bash
-study-space-ml-predict-window ../../shared/fixtures/sensor_window_quiet.json --out /tmp/edge_observation.json
-cat /tmp/edge_observation.json
+```powershell
+study-space-ml-count-features data/real_classroom_v1 \
+  --labels data/real_classroom_v1/labels.csv \
+  --out outputs/features_with_labels.csv
 ```
+cd D:\college\nus_AIoT\v05
+& "python" ./edge/ml/scripts/extract_features.py ./edge/ml/data/real_classroom_v1 --labels ./edge/ml/data/real_classroom_v1/labels.csv --out ./edge/ml/outputs/features_with_labels.csv
 
-## Run on Module 1 `windows.jsonl`
+## Train the people-count model
 
-```bash
-study-space-ml-validate ../../data/sessions/<session_id>/windows.jsonl
-study-space-ml-features ../../data/sessions/<session_id>/windows.jsonl --out /tmp/features.jsonl
-study-space-ml-predict-jsonl ../../data/sessions/<session_id>/windows.jsonl --out /tmp/edge_observations.jsonl
+```powershell
+study-space-ml-count-train data/real_classroom_v1 \
+  --labels data/real_classroom_v1/labels.csv \
+  --out-dir artifacts/people_count_rf_custom
 ```
+cd D:\college\nus_AIoT\v05
+& "python" ./edge/ml/scripts/train_people_count.py ./edge/ml/data/real_classroom_v1 --labels ./edge/ml/data/real_classroom_v1/labels.csv --out-dir ./edge/ml/artifacts/people_count_rf_custom
 
-You can also pass the session directory directly:
-
-```bash
-study-space-ml-run-pipeline ../../data/sessions/<session_id> \
-  --features-out /tmp/features.jsonl \
-  --observations-out /tmp/edge_observations.jsonl
-```
-
-## Post observations to the backend
-
-Start the backend first and seed demo rooms. Then:
-
-```bash
-study-space-ml-post /tmp/edge_observations.jsonl --url http://127.0.0.1:8000
-```
-
-With write auth enabled:
-
-```bash
-export EDGE_API_TOKEN="replace-with-token"
-study-space-ml-post /tmp/edge_observations.jsonl --url http://127.0.0.1:8000
-```
-
-## Labels for future training
-
-Runtime sensor windows must not contain labels. Put labels here:
+The artifact folder will contain:
 
 ```text
-edge/ml/data/labels.csv
+model.joblib
+metadata.json
+metrics.json
+feature_importance.csv
+training_table.csv
 ```
 
-Expected columns:
+## Predict a full session
 
-```csv
-session_id,window_id,label,annotator,notes
+```powershell
+study-space-ml-count-predict data/real_classroom_v1/session-20260723T103741176Z-ffae7d8c \
+  --artifact artifacts/people_count_rf_custom \
+  --out outputs/predictions.jsonl
+```
+cd D:\college\nus_AIoT\v05
+& "python" ./edge/ml/scripts/predict_people_count.py ./edge/ml/data/real_classroom_v1/session-20260723T103741176Z-ffae7d8c --artifact ./edge/ml/artifacts/people_count_rf_custom --out ./edge/ml/outputs/predictions.jsonl
+
+## Predict a single window JSON or windows.jsonl
+
+Use an actual `.json` SensorWindow file if you have one. In this repository, the ready-to-use real input is the session's `windows.jsonl` file:
+
+```powershell
+study-space-ml-count-predict data/real_classroom_v1/session-20260723T103741176Z-ffae7d8c/windows.jsonl \
+  --artifact artifacts/people_count_rf_custom \
+  --out outputs/predictions.jsonl
 ```
 
-Allowed training labels:
+If you have your own `.json` SensorWindow file, run:
+
+```powershell
+study-space-ml-count-predict path/to/sensor_window.json \
+  --artifact artifacts/people_count_rf_custom \
+  --out outputs/prediction.json
+```
+
+## About the included artifact
+
+This package includes a smoke-test artifact trained on the uploaded real dataset:
 
 ```text
-empty_or_low_activity
-quiet_study_recommended
-discussion_allowed
-not_recommended_noisy_or_crowded
+artifacts/people_count_rf_real_v0_1/
 ```
+cd D:\college\nus_AIoT\v05
+& "python" ./edge/ml/scripts/predict_people_count.py ./edge/ml/path/to/windows.jsonl --artifact ./edge/ml/artifacts/people_count_rf_custom --out ./edge/ml/outputs/predictions.jsonl
 
-`unknown` is only produced by online degradation logic. It should not be used as a normal training label.
+Because the dataset has only 4 sessions and 36 windows, use this model as a pipeline baseline, not as a final accuracy benchmark. Retrain after collecting more labelled sessions.
 
-## Recalibrate rule thresholds once labels exist
+## Feature sources
 
-```bash
-study-space-ml-train-rule \
-  --windows ../../data/sessions/<session_id>/windows.jsonl \
-  --labels data/labels.csv \
-  --out artifacts/rule_model_custom
-```
+The first model uses:
 
-Then run inference with the new artifact:
+- thermal matrix summaries from `.npz`;
+- sound summaries from `windows.jsonl` and `relative_features.jsonl`;
+- relative light proxy from `relative_features.jsonl`;
+- temperature and humidity from `windows.jsonl`;
+- quality/completeness and warning count.
 
-```bash
-study-space-ml-predict-jsonl ../../data/sessions/<session_id>/windows.jsonl \
-  --artifact artifacts/rule_model_custom \
-  --out /tmp/edge_observations.jsonl
-```
-
-## Privacy boundary
-
-- The backend payload only contains aggregate feature summaries.
-- Raw audio is never required or loaded.
-- Radar `target_id` values are not used as cross-window identities.
-- Thermal NPZ files are only read locally for aggregate features when available.
+Radar is included in the feature schema, but the current real dataset has `radar.health = not_configured`.
