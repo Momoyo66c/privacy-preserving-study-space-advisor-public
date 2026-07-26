@@ -1,36 +1,40 @@
-from __future__ import annotations
-
 import json
-from pathlib import Path
+import numpy as np
+import pandas as pd
 
-from study_space_ml.inference.predictor import EdgePredictor
-
-
-def repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+from study_space_ml.predictor import PeopleCountPredictor
+from study_space_ml.train import train_people_count_model
 
 
-def load_fixture(name: str) -> dict:
-    return json.loads((repo_root() / "shared" / "fixtures" / name).read_text(encoding="utf-8"))
+def test_predictor_smoke(tmp_path):
+    session = tmp_path / "session-a"
+    (session / "thermal").mkdir(parents=True)
+    labels = []
+    windows = []
+    for i, count in enumerate([0, 1, 2, 2]):
+        wid = f"w{i}"
+        frames = np.ones((2, 768), dtype="float32") * (25 + count)
+        np.savez(session / "thermal" / f"{wid}.npz", frames=frames)
+        w = {
+            "window_id": wid,
+            "room_id": "room_a",
+            "device_id": "pi5-a",
+            "window_start": "2026-07-23T10:00:00Z",
+            "window_end": "2026-07-23T10:00:05Z",
+            "thermal": {"health": "ok", "frame_count": 2, "frames_ref": f"local://session-a/thermal/{wid}.npz"},
+            "radar": {"health": "not_configured", "sample_count": 0, "tracks": []},
+            "sound": {"health": "ok", "rms_mean": count * 0.1, "rms_std": 0.01, "peak": count * 0.2},
+            "environment": {"light_lux": None, "temperature_c": 25.0, "humidity_pct": 50.0},
+            "quality": {"completeness": 0.8, "warnings": []},
+        }
+        windows.append(w)
+        labels.append({"session_id": "session-a", "window_id": wid, "people_count": count})
+    (session / "windows.jsonl").write_text("\n".join(json.dumps(w) for w in windows), encoding="utf-8")
+    (session / "session.json").write_text(json.dumps({"session_id": "session-a", "participant_range": "0-2"}), encoding="utf-8")
+    pd.DataFrame(labels).to_csv(tmp_path / "labels.csv", index=False)
 
-
-def test_predict_quiet_fixture() -> None:
-    payload = EdgePredictor().predict_window(load_fixture("sensor_window_quiet.json"))
-    assert payload["room_state"] == "quiet_study_recommended"
-    assert payload["occupancy_level"] == "low"
-    assert 0 <= payload["suitability_score"] <= 100
-    assert 0 <= payload["confidence"] <= 1
-    assert payload["features"]["sound_rms_mean"] == 0.121
-
-
-def test_predict_crowded_fixture() -> None:
-    payload = EdgePredictor().predict_window(load_fixture("sensor_window_crowded.json"))
-    assert payload["room_state"] == "not_recommended_noisy_or_crowded"
-    assert payload["occupancy_level"] == "high"
-
-
-def test_degraded_fixture_still_predicts_or_warns() -> None:
-    payload = EdgePredictor().predict_window(load_fixture("sensor_window_degraded.json"))
-    assert payload["sensor_health"]["thermal"] == "offline"
-    assert payload["sensor_health"]["environment"] == "degraded"
-    assert payload["warnings"]
+    artifact = tmp_path / "artifact"
+    train_people_count_model(tmp_path, labels_path=tmp_path / "labels.csv", out_dir=artifact)
+    pred = PeopleCountPredictor(artifact).predict_window(windows[-1], session_dir=session)
+    assert "predicted_people_count" in pred
+    assert pred["predicted_people_count_rounded"] >= 0
