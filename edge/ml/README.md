@@ -1,6 +1,10 @@
 # Module 2: People-Count ML Pipeline
 
-This folder contains a complete first version of the ML pipeline for predicting classroom people count from the real sensor dataset.
+This folder contains the existing room-state edge inference pipeline plus a
+first people-count training pipeline for the real sensor dataset. The
+people-count code is additive: Gate A continues to use
+`study_space_ml.inference.EdgePredictor` and the shared `schema_version=1.0`
+observation contract.
 
 It supports:
 
@@ -36,7 +40,7 @@ From the project root:
 cd edge/ml
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -e '.[dev]'
+python -m pip install -e '.[dev,thermal,sklearn]'
 ```
 
 Windows PowerShell:
@@ -45,7 +49,7 @@ Windows PowerShell:
 cd edge/ml
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,thermal,sklearn]"
 ```
 
 ## Run tests

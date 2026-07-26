@@ -5,7 +5,7 @@ from typing import Any
 
 import pandas as pd
 
-from .features import as_feature_frame, extract_window_features
+from .people_count_features import as_feature_frame, extract_window_features
 from .io import (
     discover_labels_file,
     find_session_dirs,

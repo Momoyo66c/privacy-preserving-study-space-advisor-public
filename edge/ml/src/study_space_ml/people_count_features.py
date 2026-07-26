@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from scipy import ndimage
 
-from .constants import FEATURE_NAMES
+from .constants import PEOPLE_COUNT_FEATURE_NAMES
 
 
 def _num(value: Any, default: float = 0.0) -> float:
@@ -258,7 +258,7 @@ def extract_window_features(
 ) -> dict[str, Any]:
     """Extract a model-ready feature row from one SensorWindow.
 
-    The returned dict includes identifiers plus all numeric FEATURE_NAMES.
+    The returned dict includes identifiers plus all numeric people-count features.
     """
     row: dict[str, Any] = {
         "session_id": Path(session_dir).name if session_dir else window.get("session_id", ""),
@@ -274,7 +274,7 @@ def extract_window_features(
     row.update(_sound_light_features(window, relative))
     row.update(_environment_quality_features(window))
 
-    for name in FEATURE_NAMES:
+    for name in PEOPLE_COUNT_FEATURE_NAMES:
         row.setdefault(name, 0.0)
 
     return row
@@ -282,7 +282,7 @@ def extract_window_features(
 
 def as_feature_frame(rows: list[dict[str, Any]]) -> pd.DataFrame:
     df = pd.DataFrame(rows)
-    for name in FEATURE_NAMES:
+    for name in PEOPLE_COUNT_FEATURE_NAMES:
         if name not in df.columns:
             df[name] = 0.0
         df[name] = pd.to_numeric(df[name], errors="coerce")

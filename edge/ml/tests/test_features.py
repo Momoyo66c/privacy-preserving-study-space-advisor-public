@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 
-from study_space_ml.features import extract_window_features
+from study_space_ml.people_count_features import extract_window_features
 
 
 def test_extract_window_features_with_npz(tmp_path):

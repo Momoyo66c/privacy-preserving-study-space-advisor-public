@@ -15,7 +15,12 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import GroupShuffleSplit, LeaveOneGroupOut
 from sklearn.pipeline import Pipeline
 
-from .constants import FEATURE_NAMES, FEATURE_SCHEMA_VERSION, MODEL_NAME, MODEL_VERSION
+from .constants import (
+    PEOPLE_COUNT_FEATURE_NAMES,
+    PEOPLE_COUNT_FEATURE_SCHEMA_VERSION,
+    PEOPLE_COUNT_MODEL_NAME,
+    PEOPLE_COUNT_MODEL_VERSION,
+)
 from .dataset import build_training_table
 
 
@@ -118,7 +123,7 @@ def train_people_count_model(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     train_df = build_training_table(dataset_root, labels_path=labels_path)
-    X = train_df[FEATURE_NAMES].copy()
+    X = train_df[PEOPLE_COUNT_FEATURE_NAMES].copy()
     y = train_df["people_count"].astype(float)
     groups = train_df["session_id"].astype(str)
 
@@ -133,7 +138,7 @@ def train_people_count_model(
     joblib.dump(model, model_path)
 
     feature_importance = pd.DataFrame({
-        "feature": FEATURE_NAMES,
+        "feature": PEOPLE_COUNT_FEATURE_NAMES,
         "importance": model.named_steps["model"].feature_importances_,
     }).sort_values("importance", ascending=False)
     feature_importance.to_csv(out_dir / "feature_importance.csv", index=False)
@@ -141,9 +146,9 @@ def train_people_count_model(
     train_df.to_csv(out_dir / "training_table.csv", index=False)
 
     metadata = {
-        "model_name": MODEL_NAME,
-        "model_version": MODEL_VERSION,
-        "feature_schema_version": FEATURE_SCHEMA_VERSION,
+        "model_name": PEOPLE_COUNT_MODEL_NAME,
+        "model_version": PEOPLE_COUNT_MODEL_VERSION,
+        "feature_schema_version": PEOPLE_COUNT_FEATURE_SCHEMA_VERSION,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "dataset_root": str(dataset_root),
         "labels_path": str(labels_path) if labels_path else None,
@@ -152,7 +157,7 @@ def train_people_count_model(
         "target": "people_count",
         "target_min": float(y.min()),
         "target_max": float(y.max()),
-        "feature_names": FEATURE_NAMES,
+        "feature_names": PEOPLE_COUNT_FEATURE_NAMES,
         "holdout_evaluation": holdout,
         "leave_one_group_out_evaluation": logo,
         "dataset_warning": (

@@ -10,9 +10,14 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from .constants import FEATURE_NAMES, FEATURE_SCHEMA_VERSION, MODEL_NAME, MODEL_VERSION
-from .features import extract_window_features
+from .constants import (
+    PEOPLE_COUNT_FEATURE_NAMES,
+    PEOPLE_COUNT_FEATURE_SCHEMA_VERSION,
+    PEOPLE_COUNT_MODEL_NAME,
+    PEOPLE_COUNT_MODEL_VERSION,
+)
 from .io import load_relative_features, read_jsonl, write_jsonl
+from .people_count_features import extract_window_features
 
 
 def _clamp(value: float, lo: float, hi: float) -> float:
@@ -40,8 +45,8 @@ class PeopleCountPredictor:
         self.model = joblib.load(self.artifact_dir / "model.joblib")
         meta_path = self.artifact_dir / "metadata.json"
         self.metadata = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
-        self.feature_names = self.metadata.get("feature_names", FEATURE_NAMES)
-        self.model_version = self.metadata.get("model_version", MODEL_VERSION)
+        self.feature_names = self.metadata.get("feature_names", PEOPLE_COUNT_FEATURE_NAMES)
+        self.model_version = self.metadata.get("model_version", PEOPLE_COUNT_MODEL_VERSION)
 
     def _confidence(self, X: pd.DataFrame, features: dict[str, Any]) -> float:
         # For RandomForestRegressor, use disagreement across trees as uncertainty.
@@ -101,9 +106,12 @@ class PeopleCountPredictor:
             "occupancy_level": occupancy_level_from_count(pred_rounded),
             "confidence": confidence,
             "model": {
-                "name": self.metadata.get("model_name", MODEL_NAME),
+                "name": self.metadata.get("model_name", PEOPLE_COUNT_MODEL_NAME),
                 "version": self.model_version,
-                "feature_schema_version": self.metadata.get("feature_schema_version", FEATURE_SCHEMA_VERSION),
+                "feature_schema_version": self.metadata.get(
+                    "feature_schema_version",
+                    PEOPLE_COUNT_FEATURE_SCHEMA_VERSION,
+                ),
             },
             "warnings": warnings,
         }

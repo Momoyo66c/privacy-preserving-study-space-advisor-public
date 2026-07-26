@@ -3,24 +3,34 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "study-space-people-count-ml"
-version = "0.1.0"
-description = "People-count prediction pipeline for privacy-preserving study space advisor"
+name = "study-space-ml"
+version = "0.4.0"
+description = "Module 2 edge ML and people-count pipelines for privacy-preserving study space advisor"
 readme = "README.md"
-requires-python = ">=3.10"
-dependencies = [
-  "numpy>=1.24",
-  "pandas>=2.0",
-  "scikit-learn>=1.3",
-  "joblib>=1.3",
-  "scipy>=1.10",
-  "matplotlib>=3.7"
-]
+requires-python = ">=3.11"
+dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4"]
+dev = ["pytest>=8"]
+thermal = ["numpy>=1.26"]
+sklearn = [
+  "numpy>=1.26",
+  "pandas>=2.0",
+  "scikit-learn>=1.4",
+  "joblib>=1.3",
+  "scipy>=1.10",
+  "matplotlib>=3.7",
+]
 
 [project.scripts]
+study-space-ml-validate = "study_space_ml.scripts.validate_dataset:main"
+study-space-ml-features = "study_space_ml.scripts.inspect_features:main"
+study-space-ml-predict-window = "study_space_ml.scripts.predict_window:main"
+study-space-ml-predict-jsonl = "study_space_ml.scripts.predict_jsonl:main"
+study-space-ml-post = "study_space_ml.scripts.post_observation:main"
+study-space-ml-train-rule = "study_space_ml.scripts.train_rule_model:main"
+study-space-ml-interface = "study_space_ml.scripts.inspect_sensor_interface:main"
+study-space-ml-run-pipeline = "study_space_ml.scripts.run_pipeline:main"
 study-space-ml-count-inspect = "study_space_ml.scripts.inspect_dataset:main"
 study-space-ml-count-features = "study_space_ml.scripts.extract_features:main"
 study-space-ml-count-train = "study_space_ml.scripts.train_people_count:main"
@@ -28,3 +38,8 @@ study-space-ml-count-predict = "study_space_ml.scripts.predict_people_count:main
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
