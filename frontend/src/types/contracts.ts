@@ -233,6 +233,30 @@ export interface RoomSelectionAccepted {
   effective_preferences: PreferenceSnapshot;
 }
 
+export interface RoomSelectionHistoryItem {
+  selection_id: string;
+  room_id: string;
+  room_name: string;
+  source: "recommendation" | "room_detail";
+  recommendation_request_id: string | null;
+  recorded_at: string;
+  selected_rank: number | null;
+  selected_score: number | null;
+  evidence: Record<string, number>;
+}
+
+export interface RoomSelectionHistoryResponse {
+  schema_version: "1.0";
+  selections: RoomSelectionHistoryItem[];
+  next_cursor: string | null;
+}
+
+export interface DeleteResult {
+  schema_version: "1.0";
+  deleted: boolean;
+  deleted_count: number;
+}
+
 export interface DashboardData {
   rooms: RoomStatus[];
   recommendations: RecommendationResponse;
@@ -242,5 +266,6 @@ export interface DashboardData {
   lastUpdated: string;
   user?: UserResponse | null;
   preferences?: MePreferenceResponse | null;
+  selectionHistory?: RoomSelectionHistoryResponse | null;
   authenticated?: boolean;
 }

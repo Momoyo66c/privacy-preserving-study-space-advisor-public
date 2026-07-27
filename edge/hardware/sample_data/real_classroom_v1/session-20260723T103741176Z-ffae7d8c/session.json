@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "session_id": "session-20260723T103741176Z-ffae7d8c",
+  "room_id": "room_a",
+  "device_id": "pi5-a",
+  "scenario": "quiet_study_recommended",
+  "started_at": "2026-07-23T10:37:41Z",
+  "ended_at": "2026-07-23T10:38:26Z",
+  "participant_range": "1",
+  "operator_notes": "one participant; natural quiet study; fixed devices; relative light and Windows microphone; no identities",
+  "known_anomalies": [],
+  "privacy": {
+    "names_recorded": false,
+    "student_ids_recorded": false,
+    "raw_audio_persisted": false,
+    "rgb_images_recorded": false
+  },
+  "driver_version": "privacy-study-space-hardware/0.1.0",
+  "sampling_config": {
+    "window_seconds": 5.0,
+    "sensors": {
+      "thermal": {
+        "enabled": true,
+        "sample_rate_hz": 2
+      },
+      "radar": {
+        "enabled": false,
+        "sample_rate_hz": 10
+      },
+      "sound": {
+        "enabled": true,
+        "sample_rate_hz": 1
+      },
+      "light": {
+        "enabled": true,
+        "sample_rate_hz": 1
+      },
+      "climate": {
+        "enabled": true,
+        "sample_rate_hz": 0.5
+      }
+    }
+  },
+  "relative_measurements": {
+    "light": {
+      "sensor_model": "HW-486",
+      "unit": "adc_count_and_normalized_0_to_1",
+      "calibrated_lux": false
+    },
+    "sound": {
+      "sensor_model": "Windows microphone",
+      "unit": "relative_rms_and_peak_0_to_1",
+      "calibrated_db": false
+    },
+    "file": "relative_features.jsonl"
+  },
+  "window_count": 9
+}

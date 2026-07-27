@@ -196,6 +196,14 @@ class WindowAccumulator:
         )
         light_adc = _values(light_samples, "light_adc_raw")
         light_normalized = _values(light_samples, "light_normalized")
+        sound_sensor_model = next(
+            (
+                str(sample.values["sensor_model"])
+                for sample in sound_samples
+                if sample.values.get("sensor_model")
+            ),
+            "HW-485",
+        )
         relative_features = {
             "schema_version": SCHEMA_VERSION,
             "window_id": window_id,
@@ -209,8 +217,11 @@ class WindowAccumulator:
                 "normalized": _relative_summary(light_normalized),
             },
             "sound": {
-                "sensor_model": "HW-485",
-                "calibrated_db": False,
+                "sensor_model": sound_sensor_model,
+                "calibrated_db": any(
+                    bool(sample.values.get("calibrated_db"))
+                    for sample in sound_samples
+                ),
                 "rms": _relative_summary(rms_values),
                 "peak": max(
                     (float(sample.values["peak"]) for sample in sound_samples),

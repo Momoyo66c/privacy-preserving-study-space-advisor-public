@@ -37,11 +37,17 @@ sensors:
     sample_rate_hz: 4
     max_retries: 1
     offline_threshold: 3
+    # Optional alternative to HW485_RELATIVE_CALIBRATION_PATH:
+    # options:
+    #   relative_calibration_path: /home/pi/.config/pssa/calibration/hw485-relative-trial.json
   light:
     enabled: true
     sample_rate_hz: 1
     max_retries: 1
     offline_threshold: 3
+    # Optional alternative to HW486_RELATIVE_CALIBRATION_PATH:
+    # options:
+    #   relative_calibration_path: /home/pi/.config/pssa/calibration/hw486-relative.json
   climate:
     enabled: true
     # DHT11 must not be read more often than about once every two seconds.

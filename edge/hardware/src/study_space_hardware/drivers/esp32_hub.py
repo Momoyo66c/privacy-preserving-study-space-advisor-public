@@ -33,6 +33,8 @@ from ..models import (
     THERMAL_PIXELS,
     THERMAL_WIDTH,
 )
+from ..relative_light import RelativeLightCalibration
+from ..relative_sound import RelativeSoundCalibration
 
 
 _HEARTBEAT_PAYLOAD = struct.Struct("<II")
@@ -681,6 +683,7 @@ class Esp32HubSoundDriver(Esp32HubSensorDriver):
         max_retries: int = 1,
         offline_threshold: int = 3,
         clock: Clock | None = None,
+        relative_calibration: RelativeSoundCalibration | None = None,
     ) -> None:
         super().__init__(
             "sound",
@@ -692,6 +695,7 @@ class Esp32HubSoundDriver(Esp32HubSensorDriver):
             clock=clock,
         )
         self.raw_audio_persisted = False
+        self.relative_calibration = relative_calibration
         self._relative_envelope = 0.0
         self._relative_envelope_at_s: float | None = None
 
@@ -732,36 +736,67 @@ class Esp32HubSoundDriver(Esp32HubSensorDriver):
             )
         if chunk_frames < 1:
             raise SensorValidationError("sound chunk_frames must be positive")
-        relative_instant = relative_sound_level(float(peak))
+        sensor_rms = float(rms)
+        sensor_peak = float(peak)
+        relative_calibrated = self.relative_calibration is not None
+        if self.relative_calibration is None:
+            output_rms = sensor_rms
+            output_peak = sensor_peak
+            relative_instant = relative_sound_level(sensor_peak)
+            warnings = (
+                "hw485_uncalibrated_relative_log_curve",
+                "hw485_relative_envelope_release_8s",
+            )
+        else:
+            output_rms = self.relative_calibration.map_rms(sensor_rms)
+            output_peak = self.relative_calibration.map_peak(sensor_peak)
+            relative_instant = output_peak
+            warnings = (
+                "hw485_relative_ambient_margin_calibration",
+                "hw485_not_calibrated_db",
+                "hw485_relative_envelope_release_8s",
+            )
         relative_level = self._update_relative_envelope(
             relative_instant,
             received.received_monotonic_s,
         )
+        sample_values: dict[str, Any] = {
+            "rms": output_rms,
+            "std": float(std),
+            "peak": output_peak,
+            "relative_instant": relative_instant,
+            "relative_level": relative_level,
+            "raw_audio_persisted": False,
+            "chunk_frames": chunk_frames,
+        }
+        if relative_calibrated:
+            sample_values.update(
+                {
+                    "rms_sensor_normalized": sensor_rms,
+                    "peak_sensor_normalized": sensor_peak,
+                    "relative_calibrated": True,
+                    "relative_calibration_method": (
+                        "quiet_p95_plus_margin_to_reference_top_decile"
+                    ),
+                    "calibrated_db": False,
+                }
+            )
         return SensorSample(
             sensor=self.name,
             captured_at=received.received_at,
             monotonic_s=received.received_monotonic_s,
-            values={
-                "rms": float(rms),
-                "std": float(std),
-                "peak": float(peak),
-                "relative_instant": relative_instant,
-                "relative_level": relative_level,
-                "raw_audio_persisted": False,
-                "chunk_frames": chunk_frames,
-            },
+            values=sample_values,
             units={
                 "rms": "normalized",
                 "std": "normalized",
                 "peak": "normalized",
                 "relative_instant": "relative_logarithmic",
                 "relative_level": "relative_logarithmic",
+                "rms_sensor_normalized": "sensor_normalized",
+                "peak_sensor_normalized": "sensor_normalized",
             },
             quality=SampleQuality.VALID,
-            warnings=(
-                "hw485_uncalibrated_relative_log_curve",
-                "hw485_relative_envelope_release_8s",
-            ),
+            warnings=warnings,
             source="esp32-hub:hw485-relative-sound",
         )
 
@@ -778,6 +813,7 @@ class Esp32HubLightDriver(Esp32HubSensorDriver):
         max_retries: int = 1,
         offline_threshold: int = 3,
         clock: Clock | None = None,
+        relative_calibration: RelativeLightCalibration | None = None,
     ) -> None:
         super().__init__(
             "light",
@@ -788,6 +824,7 @@ class Esp32HubLightDriver(Esp32HubSensorDriver):
             offline_threshold=offline_threshold,
             clock=clock,
         )
+        self.relative_calibration = relative_calibration
 
     def _read(self) -> SensorSample:
         received = self._receive()
@@ -815,15 +852,31 @@ class Esp32HubLightDriver(Esp32HubSensorDriver):
                 f"invalid calibrated light level: {calibrated_lux}"
             )
         light_lux = float(calibrated_lux) if is_calibrated else None
+        firmware_normalized = float(normalized)
+        relative_normalized = (
+            self.relative_calibration.map_adc(adc_raw)
+            if self.relative_calibration is not None
+            else firmware_normalized
+        )
+        relative_calibrated = self.relative_calibration is not None
         values: dict[str, Any] = {
             "light_adc_raw": adc_raw,
-            "light_normalized": float(normalized),
+            "light_normalized_raw": firmware_normalized,
+            "light_normalized": relative_normalized,
             "light_lux": light_lux,
             "measurement_source": "hw486_ldr_proxy",
             "calibrated_lux": is_calibrated,
+            "relative_calibrated": relative_calibrated,
         }
+        warnings: list[str] = []
         if not is_calibrated:
             values["warning"] = "hw486_uncalibrated_light_proxy"
+            warnings.append("hw486_uncalibrated_light_proxy")
+        if relative_calibrated:
+            values["relative_calibration_method"] = (
+                "median_dark_bright_clamped"
+            )
+            warnings.append("hw486_relative_two_point_calibration")
         return SensorSample(
             sensor=self.name,
             captured_at=received.received_at,
@@ -831,10 +884,12 @@ class Esp32HubLightDriver(Esp32HubSensorDriver):
             values=values,
             units={
                 "light_adc_raw": "adc_count",
+                "light_normalized_raw": "relative_adc_full_scale",
                 "light_normalized": "relative",
                 "light_lux": "lux",
             },
             quality=SampleQuality.VALID,
+            warnings=tuple(warnings),
             source="esp32-hub:hw486-ldr-proxy",
         )
 

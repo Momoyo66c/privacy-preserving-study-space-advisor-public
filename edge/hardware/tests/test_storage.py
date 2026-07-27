@@ -23,6 +23,10 @@ from study_space_hardware.storage import (
 
 
 EXAMPLE_CONFIG = Path(__file__).parents[1] / "config/example.yaml"
+WINDOWS_MIC_CONFIG = (
+    Path(__file__).parents[1]
+    / "config/esp32-hub-windows-mic.example.yaml"
+)
 
 
 def test_session_writer_saves_npz_and_never_audio(tmp_path) -> None:
@@ -99,6 +103,27 @@ def test_retention_removes_expired_and_excess_sessions_only(tmp_path) -> None:
     assert set(removed) == {sessions[1], sessions[2]}
     assert sessions[0].is_dir()
     assert unrelated.is_dir()
+
+
+def test_windows_microphone_session_metadata_names_the_actual_source(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ESP32_HUB_PORT", "/dev/serial/by-id/test")
+    config = load_config(WINDOWS_MIC_CONFIG)
+    writer = SessionWriter(
+        config=config,
+        scenario="unlabeled_relative_training",
+        base_dir=tmp_path,
+        now=datetime(2026, 7, 23, tzinfo=timezone.utc),
+    )
+
+    metadata = json.loads(writer.session_path.read_text(encoding="utf-8"))
+
+    assert metadata["relative_measurements"]["sound"]["sensor_model"] == (
+        "Windows microphone"
+    )
+    assert metadata["privacy"]["raw_audio_persisted"] is False
 
 
 def test_collect_cli_records_repeatable_known_anomalies(

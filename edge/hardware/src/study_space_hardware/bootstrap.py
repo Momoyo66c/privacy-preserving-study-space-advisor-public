@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from .actuation.base import LoggingStatusIndicator, StatusIndicator
@@ -22,8 +23,11 @@ from .drivers.esp32_hub import (
 from .drivers.ld2450 import LD2450Driver
 from .drivers.light import LightDriver
 from .drivers.mlx90640 import MLX90640Driver
+from .drivers.remote_sound import RemoteSoundFeatureDriver
 from .drivers.sound_level import SoundLevelDriver
 from .orchestrator import SensorOrchestrator
+from .relative_light import load_calibration
+from .relative_sound import load_calibration as load_sound_calibration
 from .simulators.sensors import build_simulated_drivers
 
 
@@ -83,6 +87,44 @@ def build_esp32_hub_drivers(
     for name, settings in config.sensors.items():
         if not settings.enabled:
             continue
+        if name == "sound" and settings.options.get("driver") == "remote_feature":
+            token_env = str(
+                settings.options.get("token_env", "PSSA_REMOTE_SOUND_TOKEN")
+            )
+            bearer_token = os.environ.get(token_env, "")
+            if not bearer_token:
+                raise ValueError(
+                    f"missing remote sound bearer token environment variable: "
+                    f"{token_env}"
+                )
+            drivers[name] = RemoteSoundFeatureDriver(
+                **_common(settings, clock),
+                room_id=config.room_id,
+                expected_device_id=str(
+                    settings.options.get(
+                        "expected_device_id",
+                        "windows-laptop-mic",
+                    )
+                ),
+                bearer_token=bearer_token,
+                listen_host=str(
+                    settings.options.get("listen_host", "127.0.0.1")
+                ),
+                listen_port=int(settings.options.get("listen_port", 8766)),
+                max_feature_age_s=float(
+                    settings.options.get("max_feature_age_s", 4.0)
+                ),
+                max_future_skew_s=float(
+                    settings.options.get("max_future_skew_s", 2.0)
+                ),
+                offline_after_s=float(
+                    settings.options.get("offline_after_s", 8.0)
+                ),
+                max_body_bytes=int(
+                    settings.options.get("max_body_bytes", 4096)
+                ),
+            )
+            continue
         common = {
             **_common(settings, clock),
             "hub": hub,
@@ -97,9 +139,42 @@ def build_esp32_hub_drivers(
         elif name == "radar":
             drivers[name] = Esp32HubRadarDriver(**common)
         elif name == "sound":
-            drivers[name] = Esp32HubSoundDriver(**common)
+            driver_kind = settings.options.get("driver", "esp32_hub")
+            if driver_kind != "esp32_hub":
+                raise ValueError(
+                    f"unsupported ESP32 hub sound driver: {driver_kind}"
+                )
+            calibration_path = settings.options.get(
+                "relative_calibration_path"
+            ) or os.environ.get("HW485_RELATIVE_CALIBRATION_PATH")
+            calibration = (
+                load_sound_calibration(
+                    str(calibration_path),
+                    expected_device_id=config.device_id,
+                )
+                if calibration_path
+                else None
+            )
+            drivers[name] = Esp32HubSoundDriver(
+                **common,
+                relative_calibration=calibration,
+            )
         elif name == "light":
-            drivers[name] = Esp32HubLightDriver(**common)
+            calibration_path = settings.options.get(
+                "relative_calibration_path"
+            ) or os.environ.get("HW486_RELATIVE_CALIBRATION_PATH")
+            calibration = (
+                load_calibration(
+                    str(calibration_path),
+                    expected_device_id=config.device_id,
+                )
+                if calibration_path
+                else None
+            )
+            drivers[name] = Esp32HubLightDriver(
+                **common,
+                relative_calibration=calibration,
+            )
         elif name == "climate":
             drivers[name] = Esp32HubClimateDriver(**common)
     return drivers

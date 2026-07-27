@@ -29,6 +29,11 @@ from study_space_hardware.drivers.ld2450 import REPORT_HEADER, REPORT_TAIL
 from study_space_hardware.esp32_protocol import MessageType, ProtocolFrame, encode_frame
 from study_space_hardware.models import THERMAL_PIXELS
 from study_space_hardware.orchestrator import SensorOrchestrator
+from study_space_hardware.relative_light import LightAnchor, RelativeLightCalibration
+from study_space_hardware.relative_sound import (
+    RelativeSoundCalibration,
+    SoundAnchor,
+)
 
 
 NOW = datetime(2026, 7, 20, 7, 0, tzinfo=timezone.utc)
@@ -320,6 +325,54 @@ def test_hw485_driver_holds_sparse_pulses_with_decay_without_changing_raw_values
     )
 
 
+def test_hw485_driver_applies_ambient_margin_profile_without_claiming_db() -> None:
+    quiet = SoundAnchor.from_samples(
+        "quiet",
+        [(0.01, 0.02)] * 20,
+    )
+    reference = SoundAnchor.from_samples(
+        "reference",
+        [(0.40, 0.80)] * 20,
+    )
+    calibration = RelativeSoundCalibration.create(
+        device_id="pi5-a",
+        quiet=quiet,
+        reference=reference,
+        created_at=NOW,
+    )
+    sensor_rms = (calibration.rms_floor + calibration.rms_ceiling) / 2
+    sensor_peak = (calibration.peak_floor + calibration.peak_ceiling) / 2
+    hub = StubHub(
+        [
+            _received(
+                MessageType.SOUND,
+                struct.pack("<fffH", sensor_rms, 0.05, sensor_peak, 400),
+            )
+        ]
+    )
+    driver = Esp32HubSoundDriver(
+        hub=hub,  # type: ignore[arg-type]
+        max_retries=0,
+        clock=ManualClock(),
+        relative_calibration=calibration,
+    )
+    driver.start()
+    sample = driver.read()
+
+    assert sample.values["rms_sensor_normalized"] == pytest.approx(sensor_rms)
+    assert sample.values["peak_sensor_normalized"] == pytest.approx(sensor_peak)
+    assert sample.values["rms"] == pytest.approx(0.5)
+    assert sample.values["peak"] == pytest.approx(0.5)
+    assert sample.values["relative_instant"] == pytest.approx(0.5)
+    assert sample.values["relative_level"] == pytest.approx(0.5)
+    assert sample.values["relative_calibrated"] is True
+    assert sample.values["calibrated_db"] is False
+    assert "hw485_relative_ambient_margin_calibration" in sample.warnings
+    assert "hw485_not_calibrated_db" in sample.warnings
+    assert "hw485_uncalibrated_relative_log_curve" not in sample.warnings
+    assert sample.values["raw_audio_persisted"] is False
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -392,6 +445,34 @@ def test_hub_light_driver_accepts_explicit_calibration_flag() -> None:
     assert sample.values["light_lux"] == pytest.approx(420.5)
     assert sample.values["calibrated_lux"] is True
     assert "warning" not in sample.values
+
+
+def test_hub_light_driver_applies_relative_profile_without_claiming_lux() -> None:
+    calibration = RelativeLightCalibration.create(
+        device_id="pi5-a",
+        dark=LightAnchor.from_samples("dark", [298, 299, 300, 301, 302]),
+        bright=LightAnchor.from_samples("bright", [898, 899, 900, 901, 902]),
+        created_at=NOW,
+    )
+    hub = StubHub(
+        [_received(MessageType.LIGHT, _light_payload(600, 600 / 4095))]
+    )
+    driver = Esp32HubLightDriver(
+        hub=hub,  # type: ignore[arg-type]
+        max_retries=0,
+        clock=ManualClock(),
+        relative_calibration=calibration,
+    )
+    driver.start()
+    sample = driver.read()
+
+    assert sample.values["light_normalized_raw"] == pytest.approx(600 / 4095)
+    assert sample.values["light_normalized"] == pytest.approx(0.5)
+    assert sample.values["relative_calibrated"] is True
+    assert sample.values["calibrated_lux"] is False
+    assert sample.values["light_lux"] is None
+    assert "hw486_relative_two_point_calibration" in sample.warnings
+    assert "hw486_uncalibrated_light_proxy" in sample.warnings
 
 
 @pytest.mark.parametrize(

@@ -1,0 +1,247 @@
+{
+  "summary": {
+    "dataset_root": "/mnt/data/people_count_ml_overlay_work/uploaded_data/data/real_classroom_v1",
+    "session_count": 4,
+    "sessions": [
+      {
+        "session_id": "session-20260723T092556401Z-f75d59c9",
+        "scenario": "discussion_allowed",
+        "participant_range": "2",
+        "window_count": 9,
+        "radar_enabled": false
+      },
+      {
+        "session_id": "session-20260723T093809359Z-c7ab61aa",
+        "scenario": "not_recommended_noisy_or_crowded",
+        "participant_range": "2",
+        "window_count": 9,
+        "radar_enabled": false
+      },
+      {
+        "session_id": "session-20260723T100559022Z-34fda6f1",
+        "scenario": "empty_or_low_activity",
+        "participant_range": "0",
+        "window_count": 9,
+        "radar_enabled": false
+      },
+      {
+        "session_id": "session-20260723T103741176Z-ffae7d8c",
+        "scenario": "quiet_study_recommended",
+        "participant_range": "1",
+        "window_count": 9,
+        "radar_enabled": false
+      }
+    ],
+    "window_count": 36
+  },
+  "training_metadata": {
+    "model_name": "people-count-random-forest",
+    "model_version": "0.1.0",
+    "feature_schema_version": "people-count-features-v1",
+    "created_at": "2026-07-24T07:04:17.970824+00:00",
+    "dataset_root": "/mnt/data/people_count_ml_overlay_work/uploaded_data/data/real_classroom_v1",
+    "labels_path": "/mnt/data/people_count_ml_overlay_work/uploaded_data/data/real_classroom_v1/labels.csv",
+    "training_rows": 36,
+    "session_count": 4,
+    "target": "people_count",
+    "target_min": 0.0,
+    "target_max": 2.0,
+    "feature_names": [
+      "thermal_available",
+      "thermal_frame_count_window",
+      "thermal_frame_count_npz",
+      "thermal_mean",
+      "thermal_std",
+      "thermal_min",
+      "thermal_max",
+      "thermal_p90",
+      "thermal_p95",
+      "thermal_p99",
+      "thermal_hot_threshold",
+      "thermal_hot_area_ratio",
+      "thermal_hot_region_count",
+      "thermal_temporal_std_mean",
+      "thermal_frame_diff_mean",
+      "thermal_heat_delta_p95_median",
+      "radar_available",
+      "radar_sample_count",
+      "radar_track_count",
+      "radar_valid_target_count",
+      "radar_target_count_total",
+      "radar_mean_speed_cm_s",
+      "radar_max_speed_cm_s",
+      "sound_available",
+      "sound_rms_mean",
+      "sound_rms_std",
+      "sound_peak",
+      "sound_rms_min",
+      "sound_rms_max",
+      "sound_sample_count",
+      "sound_log_rms_mean",
+      "sound_peak_to_rms",
+      "light_proxy_available",
+      "light_normalized_mean",
+      "light_normalized_std",
+      "light_adc_mean",
+      "light_adc_std",
+      "light_sample_count",
+      "env_temperature_c",
+      "env_humidity_pct",
+      "env_temp_missing",
+      "env_humidity_missing",
+      "env_light_lux_missing",
+      "quality_completeness",
+      "quality_warning_count",
+      "sensor_unavailable_count",
+      "sensor_degraded_count",
+      "window_seconds_actual"
+    ],
+    "holdout_evaluation": {
+      "skipped": false,
+      "test_groups": [
+        "session-20260723T093809359Z-c7ab61aa"
+      ],
+      "train_rows": 27,
+      "test_rows": 9,
+      "metrics": {
+        "mae": 0.28518518518518515,
+        "rmse": 0.2884269811525789,
+        "r2": NaN,
+        "rounded_accuracy": 1.0
+      },
+      "predictions": [
+        {
+          "row_index": 9,
+          "actual": 2.0,
+          "predicted": 1.7966666666666666,
+          "predicted_rounded": 2,
+          "session_id": "session-20260723T093809359Z-c7ab61aa"
+        },
+        {
+          "row_index": 10,
+          "actual": 2.0,
+          "predicted": 1.7333333333333334,
+          "predicted_rounded": 2,
+          "session_id": "session-20260723T093809359Z-c7ab61aa"
+        },
+        {
+          "row_index": 11,
+          "actual": 2.0,
+          "predicted": 1.6766666666666667,
+          "predicted_rounded": 2,
+          "session_id": "session-20260723T093809359Z-c7ab61aa"
+        },
+        {
+          "row_index": 12,
+          "actual": 2.0,
+          "predicted": 1.7166666666666666,
+          "predicted_rounded": 2,
+          "session_id": "session-20260723T093809359Z-c7ab61aa"
+        },
+        {
+          "row_index": 13,
+          "actual": 2.0,
+          "predicted": 1.73,
+          "predicted_rounded": 2,
+          "session_id": "session-20260723T093809359Z-c7ab61aa"
+        },
+        {
+          "row_index": 14,
+          "actual": 2.0,
+          "predicted": 1.6733333333333333,
+          "predicted_rounded": 2,
+          "session_id": "session-20260723T093809359Z-c7ab61aa"
+        },
+        {
+          "row_index": 15,
+          "actual": 2.0,
+          "predicted": 1.64,
+          "predicted_rounded": 2,
+          "session_id": "session-20260723T093809359Z-c7ab61aa"
+        },
+        {
+          "row_index": 16,
+          "actual": 2.0,
+          "predicted": 1.7333333333333334,
+          "predicted_rounded": 2,
+          "session_id": "session-20260723T093809359Z-c7ab61aa"
+        },
+        {
+          "row_index": 17,
+          "actual": 2.0,
+          "predicted": 1.7333333333333334,
+          "predicted_rounded": 2,
+          "session_id": "session-20260723T093809359Z-c7ab61aa"
+        }
+      ]
+    },
+    "leave_one_group_out_evaluation": {
+      "skipped": false,
+      "folds": [
+        {
+          "fold": 1,
+          "test_groups": [
+            "session-20260723T092556401Z-f75d59c9"
+          ],
+          "train_rows": 27,
+          "test_rows": 9,
+          "metrics": {
+            "mae": 0.09888888888888886,
+            "rmse": 0.10027739304327546,
+            "r2": NaN,
+            "rounded_accuracy": 1.0
+          }
+        },
+        {
+          "fold": 2,
+          "test_groups": [
+            "session-20260723T093809359Z-c7ab61aa"
+          ],
+          "train_rows": 27,
+          "test_rows": 9,
+          "metrics": {
+            "mae": 0.28518518518518515,
+            "rmse": 0.2884269811525789,
+            "r2": NaN,
+            "rounded_accuracy": 1.0
+          }
+        },
+        {
+          "fold": 3,
+          "test_groups": [
+            "session-20260723T100559022Z-34fda6f1"
+          ],
+          "train_rows": 27,
+          "test_rows": 9,
+          "metrics": {
+            "mae": 1.17,
+            "rmse": 1.170458916012892,
+            "r2": NaN,
+            "rounded_accuracy": 0.0
+          }
+        },
+        {
+          "fold": 4,
+          "test_groups": [
+            "session-20260723T103741176Z-ffae7d8c"
+          ],
+          "train_rows": 27,
+          "test_rows": 9,
+          "metrics": {
+            "mae": 0.2985185185185185,
+            "rmse": 0.2990602565320859,
+            "r2": NaN,
+            "rounded_accuracy": 1.0
+          }
+        }
+      ],
+      "overall_metrics": {
+        "mae": 0.4631481481481481,
+        "rmse": 0.6230282477792353,
+        "r2": 0.4353975308641975,
+        "rounded_accuracy": 0.75
+      }
+    },
+    "dataset_warning": "This real dataset is small and session-correlated. Metrics are useful for smoke testing, not final accuracy claims. Collect more labelled sessions before relying on accuracy."
+  }
+}

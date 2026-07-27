@@ -373,6 +373,82 @@ small,
   font-weight: 720;
 }
 
+.session-toolbar,
+.toggle-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.toggle-row {
+  justify-content: flex-start;
+}
+
+.toggle-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--blue);
+}
+
+.learning-strip,
+.history-strip,
+.outbox {
+  grid-column: 1 / -1;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.84);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.68), rgb(255 255 255 / 0.38)),
+    rgb(255 255 255 / 0.4);
+  box-shadow:
+    0 0 0 1px rgb(74 96 126 / 0.12),
+    inset 0 1px 0 rgb(255 255 255 / 0.9),
+    inset 0 -1px 0 rgb(62 78 101 / 0.1);
+}
+
+.learning-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 9px;
+}
+
+.learning-strip span,
+.history-strip span,
+.outbox span {
+  border: 1px solid rgb(255 255 255 / 0.68);
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: rgb(255 255 255 / 0.42);
+  color: var(--ink-soft);
+}
+
+.history-strip,
+.outbox {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.history-strip strong,
+.outbox strong {
+  color: var(--ink);
+}
+
+.history-strip span,
+.outbox span {
+  display: grid;
+  gap: 3px;
+}
+
+.outbox button {
+  width: fit-content;
+  min-height: 32px;
+  padding: 0 10px;
+}
+
 .session-form input {
   width: 100%;
   min-height: 42px;
@@ -1488,7 +1564,8 @@ body:has(.thermal-monitor-shell)::before {
 .admin-login,
 .admin-hero,
 .admin-panel,
-.admin-kpi {
+.admin-kpi,
+.module-card {
   position: relative;
   overflow: hidden;
   border: 1px solid var(--stroke-bright);
@@ -1509,7 +1586,8 @@ body:has(.thermal-monitor-shell)::before {
 .admin-login::before,
 .admin-hero::before,
 .admin-panel::before,
-.admin-kpi::before {
+.admin-kpi::before,
+.module-card::before {
   content: "";
   position: absolute;
   inset: 0 0 auto;
@@ -1784,6 +1862,213 @@ body:has(.thermal-monitor-shell)::before {
   background: rgb(255 255 255 / 0.42);
 }
 
+.admin-internal {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-section-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  padding: 4px 2px 0;
+}
+
+.admin-section-title h2 {
+  margin-bottom: 8px;
+  font-size: clamp(1.5rem, 2.4vw, 2.1rem);
+}
+
+.admin-section-title p {
+  max-width: 760px;
+  margin-bottom: 0;
+}
+
+.module-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 26px;
+  border: 1px solid rgb(255 255 255 / 0.76);
+  border-radius: 999px;
+  padding: 4px 10px;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.78), rgb(255 255 255 / 0.42)),
+    rgb(10 132 255 / 0.1);
+  color: #075dbf;
+  font-size: 0.76rem;
+  font-weight: 820;
+  box-shadow:
+    0 0 0 1px rgb(10 132 255 / 0.13),
+    inset 0 1px 0 rgb(255 255 255 / 0.9),
+    inset 0 -1px 0 rgb(10 132 255 / 0.08);
+  white-space: nowrap;
+}
+
+.module-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.module-card {
+  min-height: 166px;
+  padding: 16px;
+}
+
+.module-card h3 {
+  margin: 16px 0 10px;
+  color: var(--ink-soft);
+}
+
+.module-card strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 1.72rem;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.module-card p {
+  margin-bottom: 0;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.module-card.ok strong {
+  color: #157a3f;
+}
+
+.module-card.warning strong {
+  color: #9a6500;
+}
+
+.module-card.danger strong {
+  color: #b42a21;
+}
+
+.implementation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.implementation-panel {
+  min-height: 360px;
+}
+
+.pipeline-step {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid rgb(255 255 255 / 0.72);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.62), rgb(255 255 255 / 0.34)),
+    rgb(255 255 255 / 0.38);
+  box-shadow:
+    0 0 0 1px rgb(74 96 126 / 0.08),
+    inset 0 1px 0 rgb(255 255 255 / 0.84);
+}
+
+.pipeline-step + .pipeline-step {
+  margin-top: 10px;
+}
+
+.pipeline-step > span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgb(10 132 255 / 0.88), rgb(19 199 183 / 0.82));
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 820;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.3),
+    0 8px 20px rgb(10 132 255 / 0.14);
+}
+
+.pipeline-step strong,
+.endpoint-card code,
+.model-stage strong {
+  overflow-wrap: anywhere;
+}
+
+.pipeline-step p,
+.endpoint-card p,
+.model-stage p {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  line-height: 1.42;
+}
+
+.pipeline-step small {
+  border: 1px solid rgb(255 255 255 / 0.7);
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: rgb(255 255 255 / 0.48);
+  color: var(--blue-deep);
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.endpoint-list,
+.model-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.endpoint-card,
+.model-stage {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 7px 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid rgb(255 255 255 / 0.72);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.64), rgb(255 255 255 / 0.34)),
+    rgb(255 255 255 / 0.38);
+  box-shadow:
+    0 0 0 1px rgb(74 96 126 / 0.08),
+    inset 0 1px 0 rgb(255 255 255 / 0.84);
+}
+
+.endpoint-card span,
+.model-stage span {
+  display: inline-grid;
+  place-items: center;
+  min-height: 28px;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgb(10 132 255 / 0.14), rgb(255 255 255 / 0.48)),
+    rgb(255 255 255 / 0.38);
+  color: var(--blue-deep);
+  font-size: 0.74rem;
+  font-weight: 820;
+}
+
+.endpoint-card code {
+  color: var(--ink);
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.endpoint-card p,
+.model-stage p {
+  grid-column: 2;
+}
+
+.model-stage strong {
+  color: var(--ink);
+}
+
 @keyframes loading {
   from {
     background-position: 200% 0;
@@ -1798,7 +2083,8 @@ body:has(.thermal-monitor-shell)::before {
   .session-panel,
   .recommendation-zone,
   .admin-login,
-  .admin-grid {
+  .admin-grid,
+  .implementation-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1806,7 +2092,8 @@ body:has(.thermal-monitor-shell)::before {
     position: static;
   }
 
-  .admin-kpis {
+  .admin-kpis,
+  .module-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1823,7 +2110,8 @@ body:has(.thermal-monitor-shell)::before {
   .topbar,
   .panel-heading,
   .detail-heading,
-  .admin-hero {
+  .admin-hero,
+  .admin-section-title {
     display: grid;
   }
 
@@ -1839,7 +2127,8 @@ body:has(.thermal-monitor-shell)::before {
   .metric-grid,
   .sensor-metric-grid,
   .split,
-  .admin-kpis {
+  .admin-kpis,
+  .module-strip {
     grid-template-columns: 1fr;
   }
 
@@ -1852,7 +2141,10 @@ body:has(.thermal-monitor-shell)::before {
   }
 
   .admin-row,
-  .admin-row-head {
+  .admin-row-head,
+  .pipeline-step,
+  .endpoint-card,
+  .model-stage {
     grid-template-columns: 1fr;
   }
 
@@ -1872,6 +2164,15 @@ body:has(.thermal-monitor-shell)::before {
   .featured .score,
   .rec-row .score {
     grid-column: 1;
+  }
+
+  .endpoint-card p,
+  .model-stage p {
+    grid-column: 1;
+  }
+
+  .pipeline-step small {
+    width: fit-content;
   }
 
   .thermal-monitor-shell {
