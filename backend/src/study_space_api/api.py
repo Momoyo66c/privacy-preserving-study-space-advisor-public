@@ -28,6 +28,8 @@ from .schemas import (
     LiveSensorSnapshotResponse,
     ObservationAccepted,
     OccupancyLevel,
+    PeopleCountPrediction,
+    PeopleCountPreviewResponse,
     PreferenceBody,
     PreferenceProfileResponse,
     RecommendationRequest,
@@ -45,10 +47,13 @@ from .schemas import (
     StableId,
     ThermalPreview,
     ThermalPreviewResponse,
+    WeatherResponse,
 )
 from .services.forecasting import DeterministicForecastStrategy
 from .services.history import build_history_points
 from .services.preferences import sanitize_score_breakdown
+from .services.thermal_analysis import analyze_thermal_preview
+from .services.weather import WeatherUnavailable
 
 router = APIRouter()
 logger = logging.getLogger("study_space_api.api")
@@ -159,6 +164,14 @@ async def health(request: Request, response: Response, session: Session = Depend
     )
 
 
+@router.get("/api/v1/weather", response_model=WeatherResponse)
+async def get_weather(request: Request) -> WeatherResponse:
+    try:
+        return await request.app.state.weather_service.get_current()
+    except WeatherUnavailable as exc:
+        raise APIError(503, "WEATHER_UNAVAILABLE", "Live campus weather is temporarily unavailable") from exc
+
+
 @router.post("/api/v1/edge/observations", response_model=ObservationAccepted, dependencies=[Depends(require_edge_auth)])
 def create_observation(payload: EdgeObservation, request: Request, session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> ObservationAccepted:
     now = utcnow()
@@ -248,20 +261,28 @@ def get_live_sensor_snapshot(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> LiveSensorSnapshotResponse:
-    """Return the latest sensor summary with ephemeral thermal and sound previews."""
-
     room = RoomRepository(session).get(room_id)
     if room is None:
         raise APIError(404, "ROOM_NOT_FOUND", "Room was not found")
     now = utcnow()
-    result = LiveSensorSnapshotResponse(
-        generated_at=now,
-        room=build_room_status(session, room, settings, now),
-        thermal_preview=request.app.state.thermal_cache.get(room_id, now=now),
-        sound_preview=request.app.state.sound_cache.get(room_id, now=now),
+    status = build_room_status(session, room, settings, now)
+    thermal_preview = request.app.state.thermal_cache.get(room_id, now=now)
+    sound_preview = request.app.state.sound_cache.get(room_id, now=now)
+    people_count = request.app.state.people_count_cache.get(room_id, now=now)
+    analysis = analyze_thermal_preview(
+        thermal_preview,
+        model_people_count=people_count.predicted_people_count_rounded if people_count.available else None,
+        observation_people_count=status.features.thermal_hot_region_count,
     )
     session.commit()
-    return result
+    return LiveSensorSnapshotResponse(
+        generated_at=now,
+        room=status,
+        thermal_preview=thermal_preview,
+        sound_preview=sound_preview,
+        people_count=people_count,
+        thermal_analysis=analysis,
+    )
 
 
 @router.get("/api/v1/rooms/{room_id}", response_model=RoomDetailResponse)
@@ -414,6 +435,42 @@ def get_sound_preview(
     if RoomRepository(session).get(room_id) is None:
         raise APIError(404, "ROOM_NOT_FOUND", "Room was not found")
     return request.app.state.sound_cache.get(room_id)
+
+
+@router.put(
+    "/api/v1/edge/rooms/{room_id}/people-count",
+    response_model=PeopleCountPreviewResponse,
+    dependencies=[Depends(require_edge_auth)],
+)
+def put_people_count(
+    room_id: StableId,
+    body: PeopleCountPrediction,
+    request: Request,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> PeopleCountPreviewResponse:
+    if room_id != body.room_id:
+        raise APIError(422, "VALIDATION_ERROR", "Path room_id must match payload room_id")
+    if RoomRepository(session).get(room_id) is None:
+        raise APIError(404, "ROOM_NOT_FOUND", "Room was not found")
+    now = utcnow()
+    if body.observed_at > now + timedelta(seconds=settings.future_skew_seconds):
+        raise APIError(422, "PREVIEW_TIME_INVALID", "observed_at is too far in the future")
+    return request.app.state.people_count_cache.put(body, now=now)
+
+
+@router.get(
+    "/api/v1/rooms/{room_id}/people-count",
+    response_model=PeopleCountPreviewResponse,
+)
+def get_people_count(
+    room_id: StableId,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> PeopleCountPreviewResponse:
+    if RoomRepository(session).get(room_id) is None:
+        raise APIError(404, "ROOM_NOT_FOUND", "Room was not found")
+    return request.app.state.people_count_cache.get(room_id)
 
 
 @router.post("/api/v1/recommendations", response_model=RecommendationResponse)

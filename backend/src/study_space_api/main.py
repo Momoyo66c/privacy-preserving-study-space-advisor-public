@@ -14,8 +14,10 @@ from .database import Database
 from .errors import BodyLimitMiddleware, RequestIdMiddleware, install_exception_handlers
 from .recommendation import build_recommendation_adapter
 from .services.auth import LoginAttemptLimiter
+from .services.people_count import PeopleCountPreviewCache
 from .services.sound import SoundPreviewCache
 from .services.thermal import ThermalPreviewCache
+from .services.weather import WeatherService
 from .user_api import router as user_router
 
 logger = logging.getLogger("study_space_api")
@@ -36,6 +38,8 @@ def create_app(settings: Settings | None = None, adapter: RecommendationAdapter 
     app.state.database = Database(settings.database_url)
     app.state.thermal_cache = ThermalPreviewCache()
     app.state.sound_cache = SoundPreviewCache()
+    app.state.people_count_cache = PeopleCountPreviewCache()
+    app.state.weather_service = WeatherService()
     app.state.recommendation_adapter = adapter or build_recommendation_adapter(settings)
     app.state.login_attempt_limiter = LoginAttemptLimiter(
         settings.login_max_failures,
@@ -48,7 +52,7 @@ def create_app(settings: Settings | None = None, adapter: RecommendationAdapter 
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-CSRF-Token"],
+        allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Request-ID"],
     )
     install_exception_handlers(app)
     app.include_router(router)

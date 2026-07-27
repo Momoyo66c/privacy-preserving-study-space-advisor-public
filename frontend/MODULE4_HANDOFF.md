@@ -21,6 +21,12 @@
   LLM failure never changes ranking and falls back to the entire template batch.
 - Added structured-output, timeout, model-missing, invalid-output, privacy and
   ranking-invariance tests, plus a repeatable real Ollama benchmark.
+- Added a bilingual nine-room NUS directory, resilient NEA weather display and
+  an image-led glass-style student interface.
+- Restored the authenticated preference-learning flow: explicit selections are
+  confirmed by the backend first, failed writes retain their idempotency ID for
+  retry, and the Account page exposes learning, reset, history deletion and
+  account deletion controls.
 
 ## URLs and commands
 
@@ -108,8 +114,9 @@ any of these values.
 - No RGB image, identity, raw audio, raw radar frame or full thermal frame is
   sent to the LLM provider.
 - The frontend only displays 32 x 24 normalized thermal preview values.
-- Preferences use the anonymous `demo-user` profile and do not collect personal
-  identifiers.
+- Real API recommendations use the signed-in account's server-owned effective
+  preference. Mock mode retains a local demo profile; neither mode collects
+  names, student IDs, email addresses, or precise personal locations.
 
 ## Demo flow
 
@@ -124,7 +131,8 @@ any of these values.
 ## Known limitations
 
 - Frontend dependencies must be installed before local UI tests can run.
-- The first UI version uses native SVG charts to avoid extra runtime packages.
+- Interface icons use the declared `lucide-react` runtime dependency; charts and
+  the thermal renderer remain native SVG/canvas implementations.
 - Distance priority is displayed but disabled until location data is available
   from backend responses.
 - Ollama 0.32.4 on the verified RTX 4060 Laptop machine fully offloaded

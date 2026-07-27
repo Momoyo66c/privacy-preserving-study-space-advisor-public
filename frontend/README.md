@@ -1,40 +1,16 @@
-# Module 4: Recommendation and Sensor Dashboard
+# Module 4 — Recommendation and Frontend
 
-This React/Vite dashboard serves two jobs. Students can compare rooms and save preferences through the Module 3 API. Operators can inspect the current privacy-safe sensor summary, including a 32 x 24 thermal preview, relative sound RMS, relative light, temperature and humidity.
+React/Vite dashboard plus the module 4 recommendation adapter integrated into
+`backend/src/study_space_api/recommendation/`.
 
-The backend now uses Module 4's deterministic `RuleBasedRecommendationAdapter`
-by default. Ranking never depends on an LLM. Template explanations are always
-available, and an optional local Ollama provider may rewrite only the
-already-approved structured reasons.
-
-## Start the dashboard
-
-Requirements:
-
-- Node.js 22
-- A running FastAPI backend for real mode
-
-Install and start:
+## Frontend setup
 
 ```bash
 cd frontend
-npm ci
+npm install
 cp .env.example .env
 npm run dev
 ```
-
-Open `http://127.0.0.1:5173`.
-
-The dedicated thermal monitor is available at:
-
-```text
-http://127.0.0.1:5173/thermal?room=room_a&mode=api
-```
-
-It renders the current normalized MLX90640 preview as a large false-colour
-canvas. Smooth mode interpolates the 32 x 24 source for readability; sensor
-pixel mode shows the original grid. Neither mode creates additional sensor
-detail or converts relative values into absolute temperature.
 
 Mock mode is the default:
 
@@ -43,92 +19,88 @@ VITE_API_MODE=mock
 VITE_API_BASE_URL=http://127.0.0.1:8000
 VITE_REFRESH_SECONDS=10
 VITE_LIVE_SENSOR_POLL_MS=1000
-VITE_SOUND_POLL_MS=250
 ```
 
-Set `VITE_API_MODE=real` after the backend is ready. The existing field URL `http://127.0.0.1:5173/?mode=api` also selects real mode, which keeps old Raspberry Pi handoff commands valid.
+Set `VITE_API_MODE=real` after the FastAPI backend is running at
+`VITE_API_BASE_URL`.
 
-## Real sensor display
+## Backend recommendation adapter
 
-The React UI uses the current Module 3 endpoints:
+The default backend app now injects
+`RuleBasedRecommendationAdapter`, which implements the module 4 deterministic
+ranking. The module 3 stub remains only as the API-level fallback if the formal
+adapter raises or times out.
 
-| Endpoint | Purpose | Browser interval |
-|---|---|---|
-| `GET /api/v1/rooms/{room_id}/live` | Latest room summary and in-memory thermal/sound previews | `VITE_LIVE_SENSOR_POLL_MS`, default 1000 ms |
-| `GET /api/v1/rooms/{room_id}/sound-preview` | Current HW-485 RMS window | `VITE_SOUND_POLL_MS`, default 250 ms |
-| `GET /api/v1/rooms/{room_id}/history` | Aggregated historical trend | Main dashboard refresh |
-
-The sensor panel hides preview values when the room is stale or the request fails. It never substitutes the last reading as live data. Sound uses the current RMS window, not a release envelope or historical peak. HW-486 remains an uncalibrated relative value unless `light_lux` is present.
-
-Thermal previews contain 768 normalized values. They stay in process memory for at most 30 seconds and never enter history, recommendations or the LLM request builder.
-
-## Recommendation coverage
-
-- Anonymous quiet, discussion and any-mode preferences
-- Authenticated local accounts, manual preferences and explicit room selection
-- Deterministic recommendation list with confidence, stale and degraded labels
-- Student and operations views
-- History, forecast and low-resolution thermal display
-- Dedicated full-screen thermal monitor with smooth/pixel modes, grid, freeze,
-  room selection and relative-intensity scale
-- Mock states for offline, stale, degraded and unavailable previews
-
-The formal adapter combines mode match, quietness, current and forecast
-occupancy, calibrated light and temperature/humidity comfort. Missing inputs
-leave the calculation and the remaining weights are renormalized. Distance
-remains excluded until the backend receives an approved coarse location input.
-Fresh, stale and unknown/mode-mismatch rooms are bucketed before deterministic
-tie-breaking.
-
-## Local LLM explanations
-
-The Windows demo uses Ollama on loopback only. On the verified RTX 4060 Laptop
-machine the model directory is `E:\Ollama\models` and the selected model is
-`qwen3:1.7b` Q4_K_M. `qwen3:4b` remains installed for comparison but exceeded
-the two-second explanation target in three consecutive benchmark groups.
-
-Backend configuration:
+Scoring uses this formula:
 
 ```text
-RECOMMENDATION_ADAPTER_MODE=rule
-LLM_ENABLED=true
-LLM_BASE_URL=http://127.0.0.1:11434
-LLM_MODEL=qwen3:1.7b
-LLM_TIMEOUT_SECONDS=2.0
-LLM_KEEP_ALIVE=30m
+dimension_weight = base_weight * (0.5 + user_priority)
+normalized_score = sum(subscore * normalized_weight)
+final_score = normalized_score * freshness_confidence_factor
 ```
 
-When the backend runs in Docker, use
-`LLM_BASE_URL=http://host.docker.internal:11434`. Ollama is never called by the
-browser. See [`../docs/GATE_C_LOCAL_LLM.md`](../docs/GATE_C_LOCAL_LLM.md) for
-installation, benchmark and fallback verification.
+Missing dimensions, such as distance or unavailable environment readings, are
+removed before weight normalization. They are not treated as zero.
 
-## Run checks
+The first implementation scores mode match, current occupancy, 30-minute
+availability, brightness, and temperature/humidity comfort. Distance is disabled
+until room coordinates are available in the module 3 status response.
+
+## Application structure
+
+- Real API mode requires a local pseudonymous student account. Mock mode also
+  exposes a clearly separated administrator-console demonstration.
+- The language icon switches the complete interface between Simplified Chinese
+  and professional English, persists the selection locally and updates the
+  document language for assistive technology.
+- Student navigation is divided into Home, Rooms, Preferences and Account.
+- The student home shows a time-aware greeting, daily sentence, date, live
+  NEA weather from the station nearest NUS and personalized qualitative recommendations.
+- The backend weather endpoint combines the NEA temperature, humidity, wind and
+  two-hour forecast feeds, caches fresh responses and can serve the last valid
+  reading during a short upstream outage.
+- The room directory uses image-led cards. Opening a room reveals its qualitative
+  preference match, current state, exact location, access note and opening hours.
+- Nine NUS spaces are included, with official venue details and photographs for
+  the ERC and Stephen Riady Centre teaching rooms.
+- Student-facing room pages deliberately hide raw scores and sensor values.
+- The administrator console keeps quantitative suitability, confidence,
+  environment and sensor-health data in separate Overview, Live Monitor, Rooms
+  and System views.
+- Live Monitor polls the backend once per second, draws a 32 x 24 thermal frame,
+  overlays privacy-safe thermal-region boxes, reports the module 2 people-count
+  prediction and shows all four module 2 room-state classifications.
+- Numeric student preferences are persisted by the backend and immediately
+  affect deterministic ranking.
+- Explicit “Choose this room” actions are recorded idempotently and can update a
+  learned preference profile. The Account page can disable learning, reset the
+  learned values, delete selection history, retry a failed selection with the
+  same ID, or delete the account.
+
+Mock mode includes `student / study1234` and `admin / admin1234` demo accounts.
+For real API mode, create a student account from the interface. The backend does
+not implement an administrator role; the administrator console is mock-only and
+must not be treated as a production authorization boundary.
+
+## Tests
 
 ```bash
 cd backend
 python -m pytest
-python scripts/benchmark_llm.py --runs 10 --timeout 2
 
 cd ../frontend
 npm run test
-npm run build
 npm run e2e
-npm run gate-a:e2e
-
-cd ..
-python -m pytest -q tests/integration/test_gate_c.py
+npm run build
 ```
 
-`gate-a:e2e` starts a temporary backend, sends a Module 1 simulated window through Module 2 and verifies the real API in the browser. See [`../tests/integration/README.md`](../tests/integration/README.md).
+## Privacy notes
 
-## Privacy limits
+The browser never receives LLM keys. Thermal previews are displayed only as
+short-lived 32 x 24 normalized values and are never sent to the LLM request
+builder. The UI does not collect names, student IDs or email addresses. It
+records only explicit room choices, and users can disable learning, erase their
+history, or delete their account.
 
-- The UI does not collect names, email addresses or student numbers.
-- The browser never receives LLM keys.
-- No RGB image, raw audio, raw radar frame or full-temperature thermal matrix reaches recommendation code.
-- The LLM request contains only room IDs/names, final rank/score, approved
-  reasons, state enums, forecast, confidence, stale and non-identifying
-  effective preferences.
-- The heatmap displays only the latest 0-1 normalized 32 x 24 preview.
-- Relative sound and light values must not be labeled as calibrated dB or lux.
+Classroom photographs and factual venue details are sourced from official NUS
+pages. See `public/rooms/README.md` for attribution and operational caveats.
