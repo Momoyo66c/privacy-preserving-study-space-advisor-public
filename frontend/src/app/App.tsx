@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   allCandidateIds,
   defaultRequest,
+  deleteMe,
+  deleteRoomSelections,
   isRealApi,
   loadDashboardData,
   loadLiveSensorSnapshot,
@@ -10,6 +12,7 @@ import {
   logout as logoutUser,
   recordRoomSelection,
   register as registerUser,
+  resetLearnedPreferences,
   saveMyPreferences,
 } from "../api/client";
 import type {
@@ -26,6 +29,14 @@ import type {
 } from "../types/contracts";
 
 type ViewMode = "student" | "admin";
+type FailedSelection = {
+  id: string;
+  roomId: string;
+  roomName: string;
+  source: "recommendation" | "room_detail";
+  recommendationRequestId: string | null;
+  message: string;
+};
 
 const labels = {
   quiet: "Quiet study",
@@ -57,6 +68,7 @@ export function App() {
   const [liveSnapshot, setLiveSnapshot] = useState<LiveSensorSnapshotResponse | null>(null);
   const [soundPreview, setSoundPreview] = useState<SoundPreviewResponse | null>(null);
   const [liveSensorError, setLiveSensorError] = useState<string | null>(null);
+  const [outbox, setOutbox] = useState<FailedSelection[]>([]);
 
   const selectedRoom = data?.rooms.find((room) => room.room_id === selectedRoomId) ?? data?.rooms[0];
   const selectedRecommendation = data?.recommendations.recommendations.find((item) => item.room_id === selectedRoom?.room_id);
@@ -199,15 +211,90 @@ export function App() {
     }
   }
 
+  async function handleLearningToggle(enabled: boolean) {
+    if (!data?.authenticated) return;
+    setAuthBusy(true);
+    try {
+      await saveMyPreferences(request, enabled);
+      setAuthMessage(enabled ? "Preference learning enabled." : "Preference learning paused.");
+      await refresh(request);
+    } catch (err) {
+      setAuthMessage(err instanceof Error ? err.message : "Learning setting could not be saved.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleResetLearned() {
+    setAuthBusy(true);
+    try {
+      await resetLearnedPreferences();
+      setAuthMessage("Learned preference values reset.");
+      await refresh(request);
+    } catch (err) {
+      setAuthMessage(err instanceof Error ? err.message : "Learned preferences could not be reset.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleDeleteSelections() {
+    setAuthBusy(true);
+    try {
+      await deleteRoomSelections();
+      setAuthMessage("Room selection history cleared.");
+      await refresh(request);
+    } catch (err) {
+      setAuthMessage(err instanceof Error ? err.message : "Selection history could not be cleared.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (!window.confirm("Delete this local account and its learning history?")) return;
+    setAuthBusy(true);
+    try {
+      await deleteMe();
+      setAuthMessage("Account deleted.");
+      setOutbox([]);
+      await refresh(request, { selectTopRoom: true });
+    } catch (err) {
+      setAuthMessage(err instanceof Error ? err.message : "Account could not be deleted.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
   async function chooseRoom(roomId: string, source: "recommendation" | "room_detail") {
     setSelectedRoomId(roomId);
     setSelectionMessage(null);
     if (!isRealApi || !data?.authenticated) return;
+    const recommendationRequestId = source === "recommendation" ? data.recommendations.request_id : null;
     try {
-      await recordRoomSelection(roomId, source === "recommendation" ? data.recommendations.request_id : null, source);
+      await recordRoomSelection(roomId, recommendationRequestId, source);
       setSelectionMessage("Choice saved for preference learning.");
+      await refresh(request);
     } catch (err) {
-      setSelectionMessage(err instanceof Error ? err.message : "Room choice could not be saved.");
+      const message = err instanceof Error ? err.message : "Room choice could not be saved.";
+      const roomName = data.rooms.find((room) => room.room_id === roomId)?.name ?? roomId;
+      setOutbox((items) => [
+        { id: `${Date.now()}-${roomId}`, roomId, roomName, source, recommendationRequestId, message },
+        ...items,
+      ].slice(0, 4));
+      setSelectionMessage(`${message} Saved to retry queue.`);
+    }
+  }
+
+  async function retrySelection(item: FailedSelection) {
+    try {
+      await recordRoomSelection(item.roomId, item.recommendationRequestId, item.source);
+      setOutbox((items) => items.filter((entry) => entry.id !== item.id));
+      setSelectionMessage(`Retried and saved ${item.roomName}.`);
+      await refresh(request);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Retry failed.";
+      setOutbox((items) => items.map((entry) => entry.id === item.id ? { ...entry, message } : entry));
     }
   }
 
@@ -244,8 +331,16 @@ export function App() {
           user={data?.user ?? null}
           busy={authBusy}
           message={authMessage}
+          preferences={data?.preferences ?? null}
+          history={data?.selectionHistory ?? null}
+          outbox={outbox}
           onAuth={handleAuth}
           onLogout={handleLogout}
+          onLearningToggle={handleLearningToggle}
+          onResetLearned={handleResetLearned}
+          onDeleteSelections={handleDeleteSelections}
+          onDeleteAccount={handleDeleteAccount}
+          onRetrySelection={retrySelection}
         />
       ) : null}
 
@@ -298,14 +393,30 @@ function SessionPanel({
   user,
   busy,
   message,
+  preferences,
+  history,
+  outbox,
   onAuth,
   onLogout,
+  onLearningToggle,
+  onResetLearned,
+  onDeleteSelections,
+  onDeleteAccount,
+  onRetrySelection,
 }: {
   user: DashboardData["user"];
   busy: boolean;
   message: string | null;
+  preferences: DashboardData["preferences"];
+  history: DashboardData["selectionHistory"];
+  outbox: FailedSelection[];
   onAuth: (mode: "login" | "register", username: string, password: string) => Promise<void>;
   onLogout: () => Promise<void>;
+  onLearningToggle: (enabled: boolean) => Promise<void>;
+  onResetLearned: () => Promise<void>;
+  onDeleteSelections: () => Promise<void>;
+  onDeleteAccount: () => Promise<void>;
+  onRetrySelection: (item: FailedSelection) => Promise<void>;
 }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -328,10 +439,33 @@ function SessionPanel({
       </div>
       {user ? (
         <div className="session-actions">
-          <span className="save-state">Session active</span>
-          <button type="button" disabled={busy} onClick={() => void onLogout()}>
-            Sign out
-          </button>
+          <div className="session-toolbar">
+            <span className="save-state">Session active</span>
+            <button type="button" disabled={busy} onClick={() => void onLogout()}>
+              Sign out
+            </button>
+          </div>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={preferences?.learning_enabled ?? true}
+              disabled={busy}
+              onChange={(event) => void onLearningToggle(event.currentTarget.checked)}
+            />
+            Preference learning
+          </label>
+          {preferences ? <PreferenceEvidence preferences={preferences} /> : null}
+          <div className="button-row">
+            <button type="button" disabled={busy} onClick={() => void onResetLearned()}>
+              Reset learned
+            </button>
+            <button type="button" disabled={busy} onClick={() => void onDeleteSelections()}>
+              Clear choices
+            </button>
+            <button type="button" disabled={busy} onClick={() => void onDeleteAccount()}>
+              Delete account
+            </button>
+          </div>
         </div>
       ) : (
         <form className="session-form" onSubmit={(event) => void submit(event)}>
@@ -353,8 +487,55 @@ function SessionPanel({
           </div>
         </form>
       )}
+      {user && history?.selections.length ? <SelectionHistory selections={history.selections} /> : null}
+      {outbox.length ? <SelectionOutbox items={outbox} busy={busy} onRetry={onRetrySelection} /> : null}
       {message ? <p className="inline-note">{message}</p> : null}
     </section>
+  );
+}
+
+function PreferenceEvidence({ preferences }: { preferences: NonNullable<DashboardData["preferences"]> }) {
+  const counts = preferences.evidence_counts;
+  const total = counts.quiet_priority + counts.low_occupancy_priority + counts.brightness_priority + counts.comfort_priority;
+  return (
+    <div className="learning-strip">
+      <span>Evidence {total}</span>
+      <span>Quiet {formatMaybe(preferences.learned.quiet_priority)}</span>
+      <span>Crowd {formatMaybe(preferences.learned.low_occupancy_priority)}</span>
+      <span>Light {formatMaybe(preferences.learned.brightness_priority)}</span>
+      <span>Comfort {formatMaybe(preferences.learned.comfort_priority)}</span>
+    </div>
+  );
+}
+
+function SelectionHistory({ selections }: { selections: NonNullable<DashboardData["selectionHistory"]>["selections"] }) {
+  return (
+    <div className="history-strip" aria-label="Recent room selections">
+      <strong>Recent choices</strong>
+      {selections.slice(0, 4).map((selection) => (
+        <span key={selection.selection_id}>
+          {selection.room_name}
+          <small>{selection.selected_rank ? `#${selection.selected_rank}` : selection.source}</small>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function SelectionOutbox({ items, busy, onRetry }: { items: FailedSelection[]; busy: boolean; onRetry: (item: FailedSelection) => Promise<void> }) {
+  return (
+    <div className="outbox" aria-label="Retry queue">
+      <strong>Retry queue</strong>
+      {items.map((item) => (
+        <span key={item.id}>
+          {item.roomName}
+          <small>{item.message}</small>
+          <button type="button" disabled={busy} onClick={() => void onRetry(item)}>
+            Retry
+          </button>
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -793,7 +974,149 @@ function AdminDashboard({
           </div>
         </section>
       </div>
+      <ModuleImplementationConsole data={data} rooms={rooms} staleRooms={staleRooms} offlineSensors={offlineSensors} degradedSensors={degradedSensors} averageConfidence={averageConfidence} />
     </section>
+  );
+}
+
+function ModuleImplementationConsole({
+  data,
+  rooms,
+  staleRooms,
+  offlineSensors,
+  degradedSensors,
+  averageConfidence,
+}: {
+  data: DashboardData;
+  rooms: RoomStatus[];
+  staleRooms: RoomStatus[];
+  offlineSensors: string[];
+  degradedSensors: string[];
+  averageConfidence: number;
+}) {
+  const recommendations = data.recommendations.recommendations;
+  const selectionCount = data.selectionHistory?.selections.length ?? 0;
+  const forecastCount = rooms.reduce((count, room) => count + room.forecasts.length, 0);
+  const thermalAvailable = Object.values(data.thermalPreviews).filter((preview) => preview.available).length;
+  const soundAvailable = rooms.filter((room) => room.features.sound_rms_mean != null).length;
+  const explanationSources = Array.from(new Set(recommendations.map((item) => item.explanation_source))).join(", ") || "none";
+
+  return (
+    <section className="admin-internal" aria-label="Module implementation console">
+      <div className="admin-section-title">
+        <div>
+          <p className="eyebrow">Internal implementation</p>
+          <h2>Full project control view</h2>
+          <p className="muted">Hardware signals, backend contracts, recommendation logic, and frontend guardrails are shown here for the final showcase.</p>
+        </div>
+        <span className="module-badge">Admin overview</span>
+      </div>
+
+      <div className="module-strip">
+        <ModuleCard module="Module 1" title="Hardware sensing" value={`${thermalAvailable}/${rooms.length}`} detail="Thermal previews available" tone={thermalAvailable ? "ok" : "warning"} />
+        <ModuleCard module="Module 2" title="Backend services" value={data.backendStatus.toUpperCase()} detail={`${rooms.length} rooms, ${forecastCount} forecasts`} tone={data.backendStatus === "ok" ? "ok" : "warning"} />
+        <ModuleCard module="Module 3" title="ML recommendation" value={`${averageConfidence}%`} detail={`${recommendations.length} ranked rooms`} tone={averageConfidence >= 70 ? "ok" : "warning"} />
+        <ModuleCard module="Module 4" title="Frontend console" value="Ready" detail="Student and admin views" tone="ok" />
+      </div>
+
+      <div className="implementation-grid">
+        <section className="admin-panel implementation-panel">
+          <div className="panel-heading">
+            <h3>Hardware data pipeline</h3>
+            <span className="module-badge">Module 1</span>
+          </div>
+          <PipelineStep index="01" title="Thermal sensor" detail={`${thermalAvailable} low-resolution thermal previews, ${rooms.reduce((sum, room) => sum + (room.features.thermal_hot_region_count ?? 0), 0)} hot regions currently detected.`} status={thermalAvailable ? "Live" : "Waiting"} />
+          <PipelineStep index="02" title="Radar occupancy" detail={`${rooms.reduce((sum, room) => sum + (room.features.radar_active_target_count ?? 0), 0)} active targets aggregated without identity data.`} status={offlineSensors.some((item) => item.includes("radar")) ? "Check" : "Live"} />
+          <PipelineStep index="03" title="Sound preview" detail={`${soundAvailable} RMS summaries available; raw voice storage remains blocked.`} status={soundAvailable ? "Privacy safe" : "No sample"} />
+          <PipelineStep index="04" title="Environment signals" detail="Light, temperature, and humidity are consumed as numeric features for comfort scoring." status={degradedSensors.length ? "Degraded" : "Live"} />
+        </section>
+
+        <section className="admin-panel implementation-panel">
+          <div className="panel-heading">
+            <h3>Backend API surface</h3>
+            <span className="module-badge">Module 2</span>
+          </div>
+          <div className="endpoint-list">
+            <EndpointCard method="GET" path="/api/v1/rooms/status" detail={`${rooms.length} aggregate room states`} />
+            <EndpointCard method="GET" path="/api/v1/rooms/{room_id}/live" detail="Room, thermal preview, and sound preview in one snapshot" />
+            <EndpointCard method="POST" path="/api/v1/me/recommendations" detail="Authenticated recommendation request with learned preferences" />
+            <EndpointCard method="GET" path="/api/v1/me/room-selections" detail={`${selectionCount} recent local choices loaded when signed in`} />
+            <EndpointCard method="POST" path="/api/v1/me/preferences/reset-learned" detail="Reset learned weights without deleting manual preferences" />
+          </div>
+        </section>
+
+        <section className="admin-panel implementation-panel">
+          <div className="panel-heading">
+            <h3>ML and ranking logic</h3>
+            <span className="module-badge">Module 3</span>
+          </div>
+          <div className="model-stack">
+            <ModelStage label="Feature vector" value="Thermal + radar + sound + environment" detail="Only aggregate, privacy-safe signals enter the recommender." />
+            <ModelStage label="Forecast" value={`${forecastCount} horizons`} detail="15-minute and 30-minute occupancy forecasts support forward-looking choices." />
+            <ModelStage label="Ranking" value={recommendations[0] ? `${recommendations[0].room_id} #1` : "No rank"} detail="Score combines study mode, occupancy, confidence, freshness, and fallback penalties." />
+            <ModelStage label="Explanation" value={explanationSources} detail="Template explanations remain available when LLM generation is unavailable." />
+          </div>
+        </section>
+
+        <section className="admin-panel implementation-panel">
+          <div className="panel-heading">
+            <h3>Showcase readiness</h3>
+            <span className="module-badge">Module 4</span>
+          </div>
+          <div className="quality-list">
+            <QualityItem label="Student experience" value="Complete: ranking, detail, privacy, learning controls" tone="ok" />
+            <QualityItem label="Admin experience" value="Complete: health, modules, APIs, ML visibility" tone="ok" />
+            <QualityItem label="Real hardware data" value={isRealApi ? "Requires live backend and devices" : "Mocked in this frontend demo"} tone="warning" />
+            <QualityItem label="Production admin auth" value="Demo login only; backend auth needed for deployment" tone="warning" />
+            <QualityItem label="Model training UI" value="Shown as status/logic, not executable in browser" tone="warning" />
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function ModuleCard({ module, title, value, detail, tone }: { module: string; title: string; value: string; detail: string; tone: "ok" | "warning" | "danger" }) {
+  return (
+    <article className={`module-card ${tone}`}>
+      <span className="module-badge">{module}</span>
+      <h3>{title}</h3>
+      <strong>{value}</strong>
+      <p>{detail}</p>
+    </article>
+  );
+}
+
+function PipelineStep({ index, title, detail, status }: { index: string; title: string; detail: string; status: string }) {
+  return (
+    <div className="pipeline-step">
+      <span>{index}</span>
+      <div>
+        <strong>{title}</strong>
+        <p>{detail}</p>
+      </div>
+      <small>{status}</small>
+    </div>
+  );
+}
+
+function EndpointCard({ method, path, detail }: { method: string; path: string; detail: string }) {
+  return (
+    <div className="endpoint-card">
+      <span>{method}</span>
+      <code>{path}</code>
+      <p>{detail}</p>
+    </div>
+  );
+}
+
+function ModelStage({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="model-stage">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <p>{detail}</p>
+    </div>
   );
 }
 
@@ -978,6 +1301,11 @@ function formatReading(value: number | null | undefined, unit: string, decimals:
 
 function formatPercent(value: number | null | undefined, decimals: number) {
   return value == null || !Number.isFinite(value) ? "--" : `${(value * 100).toFixed(decimals)}%`;
+}
+
+function formatMaybe(value?: number | null) {
+  if (value == null) return "Unavailable";
+  return value <= 1 ? value.toFixed(2) : `${Math.round(value)}`;
 }
 
 function formatTime(value?: string) {

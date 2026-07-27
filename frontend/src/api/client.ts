@@ -4,12 +4,14 @@ import type {
   AuthSessionResponse,
   AuthenticatedRecommendationRequest,
   DashboardData,
+  DeleteResult,
   LiveSensorSnapshotResponse,
   MePreferenceResponse,
   MePreferenceUpdate,
   RecommendationRequest,
   RoomHistoryResponse,
   RoomSelectionAccepted,
+  RoomSelectionHistoryResponse,
   RoomSelectionRequest,
   RoomStatus,
   SoundPreviewResponse,
@@ -66,6 +68,7 @@ export async function loadDashboardData(request: RecommendationRequest): Promise
     lastUpdated: new Date().toISOString(),
     user: session.user,
     preferences: session.preferences,
+    selectionHistory: session.selectionHistory,
     authenticated: Boolean(session.user),
   };
 }
@@ -108,6 +111,13 @@ export async function logout() {
   rememberCsrf(null);
 }
 
+export async function deleteMe() {
+  if (!isRealApi) return null;
+  const response = await deleteJson<DeleteResult>("/api/v1/me");
+  rememberCsrf(null);
+  return response;
+}
+
 export async function saveMyPreferences(request: RecommendationRequest, learningEnabled: boolean) {
   if (!isRealApi) return null;
   const body: MePreferenceUpdate = {
@@ -124,6 +134,11 @@ export async function saveMyPreferences(request: RecommendationRequest, learning
   return putJson<MePreferenceUpdate, MePreferenceResponse>("/api/v1/me/preferences", body);
 }
 
+export async function resetLearnedPreferences() {
+  if (!isRealApi) return null;
+  return postJson<Record<string, never>, MePreferenceResponse>("/api/v1/me/preferences/reset-learned", {});
+}
+
 export async function recordRoomSelection(roomId: string, recommendationRequestId: string | null, source: RoomSelectionRequest["source"]) {
   if (!isRealApi) return null;
   const body: RoomSelectionRequest = {
@@ -134,6 +149,16 @@ export async function recordRoomSelection(roomId: string, recommendationRequestI
     source,
   };
   return postJson<RoomSelectionRequest, RoomSelectionAccepted>("/api/v1/me/room-selections", body);
+}
+
+export async function listRoomSelections(limit = 6) {
+  if (!isRealApi) return null;
+  return getJson<RoomSelectionHistoryResponse>(`/api/v1/me/room-selections?limit=${limit}`);
+}
+
+export async function deleteRoomSelections() {
+  if (!isRealApi) return null;
+  return deleteJson<DeleteResult>("/api/v1/me/room-selections");
 }
 
 async function getJson<T>(path: string): Promise<T> {
@@ -173,14 +198,26 @@ async function putJson<Body, Result>(path: string, body: Body) {
   return response.json() as Promise<Result>;
 }
 
-async function optionalSessionState(): Promise<{ user: UserResponse | null; preferences: MePreferenceResponse | null }> {
+async function deleteJson<Result>(path: string) {
+  const token = csrfToken();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "DELETE",
+    credentials: "include",
+    headers: token ? { "X-CSRF-Token": token } : {},
+  });
+  if (!response.ok) throw new Error(`DELETE ${path} failed with ${response.status}`);
+  return response.json() as Promise<Result>;
+}
+
+async function optionalSessionState(): Promise<{ user: UserResponse | null; preferences: MePreferenceResponse | null; selectionHistory: RoomSelectionHistoryResponse | null }> {
   try {
     const user = await getJson<UserResponse>("/api/v1/me");
     const preferences = await getJson<MePreferenceResponse>("/api/v1/me/preferences");
-    return { user, preferences };
+    const selectionHistory = await listRoomSelections(6);
+    return { user, preferences, selectionHistory };
   } catch {
     rememberCsrf(null);
-    return { user: null, preferences: null };
+    return { user: null, preferences: null, selectionHistory: null };
   }
 }
 

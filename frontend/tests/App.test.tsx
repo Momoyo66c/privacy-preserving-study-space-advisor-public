@@ -40,5 +40,8 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "Space health at a glance" })).toBeInTheDocument();
     expect(screen.getByText("Sensor matrix")).toBeInTheDocument();
     expect(screen.getByText("Privacy and data quality")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Full project control view" })).toBeInTheDocument();
+    expect(screen.getByText("Backend API surface")).toBeInTheDocument();
+    expect(screen.getByText("ML and ranking logic")).toBeInTheDocument();
   });
 });
