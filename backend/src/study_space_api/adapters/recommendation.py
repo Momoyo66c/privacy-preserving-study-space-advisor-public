@@ -18,6 +18,7 @@ class RecommendationContext:
     rooms: list[RoomStatus]
     effective_preferences: RecommendationPreferences | None = None
     preferred_temperature_c: float | None = None
+    explanations_enabled: bool = True
 
     @property
     def preferences(self) -> RecommendationPreferences:
@@ -34,6 +35,7 @@ class AdapterResult:
     warnings: list[str]
     adapter_name: str
     score_breakdown: dict[str, dict] | None = None
+    fallback_reason: str | None = None
 
 
 class RecommendationAdapter(Protocol):

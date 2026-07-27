@@ -356,6 +356,7 @@ async def my_recommendations(
         fallback_reason = type(exc).__name__
         adapter_result = await StubRecommendationAdapter().rank(context)
         adapter_result.warnings.append("RECOMMENDATION_ADAPTER_FALLBACK")
+    fallback_reason = fallback_reason or adapter_result.fallback_reason
     latency_ms = (time.perf_counter() - started) * 1000
     recommendation_request_id = request_id_for(request)
     result = RecommendationResponse(
@@ -412,6 +413,7 @@ async def _direct_selection_breakdowns(
         rooms=[build_room_status(session, room, settings, now) for room in rooms],
         effective_preferences=as_recommendation_preferences(effective),
         preferred_temperature_c=effective.preferred_temperature_c,
+        explanations_enabled=False,
     )
     try:
         adapter_result = await asyncio.wait_for(

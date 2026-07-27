@@ -441,6 +441,7 @@ async def recommendations(
         fallback_reason = type(exc).__name__
         adapter_result = await StubRecommendationAdapter().rank(context)
         adapter_result.warnings.append("RECOMMENDATION_ADAPTER_FALLBACK")
+    fallback_reason = fallback_reason or adapter_result.fallback_reason
     latency_ms = (time.perf_counter() - started) * 1000
     req_id = request_id_for(request)
     response = RecommendationResponse(request_id=req_id, generated_at=now, recommendations=adapter_result.recommendations, warnings=adapter_result.warnings)

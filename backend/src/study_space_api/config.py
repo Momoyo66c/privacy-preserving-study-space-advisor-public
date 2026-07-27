@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,7 +29,16 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
-    recommendation_adapter_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
+    recommendation_adapter_timeout_seconds: float = Field(default=2.5, gt=0, le=30)
+    recommendation_adapter_mode: Literal["rule", "stub"] = "rule"
+    llm_enabled: bool = False
+    llm_base_url: str = "http://127.0.0.1:11434"
+    llm_model: str = "qwen3:1.7b"
+    llm_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
+    llm_context_tokens: int = Field(default=2_048, ge=512, le=32_768)
+    llm_max_output_tokens: int = Field(default=160, ge=32, le=1_024)
+    llm_keep_alive: str = "30m"
+    llm_language: Literal["en"] = "en"
     allow_anonymous_demo: bool = True
     session_ttl_seconds: int = Field(default=28_800, ge=300, le=604_800)
     session_cookie_secure: bool = False
@@ -47,6 +57,22 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [part.strip() for part in value.split(",") if part.strip()]
         return value
+
+    @field_validator("llm_base_url")
+    @classmethod
+    def normalize_llm_base_url(cls, value: str) -> str:
+        normalized = value.rstrip("/")
+        if not normalized.startswith(("http://", "https://")):
+            raise ValueError("llm_base_url must be an HTTP(S) URL")
+        return normalized
+
+    @field_validator("llm_model", "llm_keep_alive")
+    @classmethod
+    def non_empty_llm_setting(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("LLM settings must not be empty")
+        return normalized
 
     @model_validator(mode="after")
     def production_security_defaults(self) -> "Settings":

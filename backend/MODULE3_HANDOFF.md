@@ -18,9 +18,21 @@ Thermal preview uses its separate edge endpoint. It is fixed at 32 x 24 normaliz
 
 The dashboard can fetch `GET /api/v1/rooms/{room_id}/live` to receive the latest `RoomStatus`, ephemeral thermal preview, and current sound RMS in one read. It can poll `GET /api/v1/rooms/{room_id}/sound-preview` independently for lower-latency sound display. These endpoints are additive projections only: module 2 continues writing through the existing observation contract, and the Pi bridge writes previews through their dedicated edge endpoints.
 
-Module 4 implements the asynchronous `RecommendationAdapter` protocol in `study_space_api.adapters.recommendation`. Module 3 keeps a visibly marked deterministic stub as the default; it is not the final personalized ranking algorithm. The protocol accepts server-owned effective preferences and may return per-room score breakdowns. Module 3 consumes those breakdowns for selection learning, while adapter failures fall back to the stub without losing core API availability.
+Module 4 implements the asynchronous `RecommendationAdapter` protocol in
+`study_space_api.recommendation`. The default is now
+`module4-rule-based-v1`; the visibly marked deterministic stub is retained only
+for an explicit configuration or complete adapter failure. The protocol accepts
+server-owned effective preferences and returns per-room score breakdowns.
+Module 3 consumes those breakdowns for selection learning.
 
-The default stub returns no score breakdown: it records valid selections but intentionally creates no learned evidence. A Module 4 adapter may provide per-candidate `components` in the 0–100 range for `mode_match`, `quietness`, `current_occupancy`, `future_availability`, `brightness`, `comfort`, and `distance`; optional matching `weights` are 0–1, `base_score`/`final_score` are 0–100, and `confidence_factor`/`freshness_factor`/`health_factor` are 0–1. Module 3 strips unknown rooms, unknown fields, free text, non-finite values, and out-of-range values before persistence or learning.
+The rule adapter provides per-candidate `components` in the 0–100 range for
+`mode_match`, `quietness`, `current_occupancy`, `future_availability`,
+`brightness`, `comfort`, and `distance`; optional matching `weights` are 0–1,
+`base_score`/`final_score` are 0–100, and
+`confidence_factor`/`freshness_factor`/`health_factor` are 0–1. Module 3 strips
+unknown rooms, unknown fields, free text, non-finite values, and out-of-range
+values before persistence or learning. Prompts, model responses and raw sensor
+inputs are not audit fields.
 
 ## Authentication, selection, and learning
 
@@ -55,5 +67,7 @@ The current synthetic backtest favors persistence over recent averaging. See `PE
 - Repository-level CI now includes dedicated Python 3.11 test/migration and Docker health-check jobs; `CI_HANDOFF.md` documents the required branch-protection checks.
 - Docker Desktop 4.82.0 / Engine 29.6.1 was smoke-tested locally on 2026-07-16: the Python 3.11 image built, migrations completed, the single Uvicorn worker became healthy, and the temporary container was removed.
 - The authentication increment passed all 61 tests on Python 3.11.6. Docker smoke was rerun successfully on 2026-07-22 with Engine 29.6.1: the Python 3.11 image built, Alembic upgraded through `0002`, `/health` returned 200 with `database=ok`, and the temporary container was removed.
-- Module 2 must confirm nullable feature behavior, and module 4 must replace the stub adapter.
-- Module 4 owns every frontend change and the formal ranking/explanation implementation. This Module 3 delivery does not modify `frontend/` or `.github/`.
+- Module 2 must continue to mark missing/unhealthy features accurately so the
+  rule adapter can omit and renormalize those dimensions.
+- Module 4 now owns the formal ranking and template/Ollama explanation package
+  integrated through the existing Module 3 boundary.

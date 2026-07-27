@@ -683,7 +683,8 @@ small,
 }
 
 .featured p,
-.featured .badges {
+.featured .badges,
+.featured .explanation-source {
   grid-column: 2 / -1;
 }
 
@@ -697,6 +698,14 @@ small,
   margin-bottom: 0;
   color: var(--ink-soft);
   line-height: 1.45;
+}
+
+.explanation-source {
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .rec-row {
@@ -1037,6 +1046,445 @@ circle {
   min-width: 0;
   min-height: 0;
   transition: background-color 650ms ease;
+}
+
+.thermal-monitor-link {
+  display: inline-flex;
+  min-height: 38px;
+  margin-top: 10px;
+  padding: 0 12px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(10 132 255 / 0.28);
+  border-radius: 8px;
+  background: rgb(10 132 255 / 0.09);
+  color: #075dbf;
+  font-size: 0.86rem;
+  font-weight: 760;
+  text-decoration: none;
+  transition:
+    transform 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.thermal-monitor-link:hover {
+  transform: translateY(-1px);
+  border-color: rgb(10 132 255 / 0.5);
+  background: rgb(10 132 255 / 0.15);
+}
+
+.thermal-monitor-link:focus-visible {
+  outline: 3px solid rgb(10 132 255 / 0.28);
+  outline-offset: 2px;
+}
+
+.thermal-monitor-shell {
+  --thermal-ink: #f4f6fb;
+  --thermal-muted: #9ba6b9;
+  --thermal-line: rgb(184 199 224 / 0.18);
+  position: relative;
+  z-index: 2;
+  min-height: 100svh;
+  padding: 22px clamp(18px, 3vw, 48px) 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 42% 22%, rgb(31 71 129 / 0.2), transparent 31%),
+    radial-gradient(circle at 80% 72%, rgb(208 64 31 / 0.09), transparent 28%),
+    linear-gradient(145deg, #080d18 0%, #04070e 62%, #0b1019 100%);
+  color: var(--thermal-ink);
+}
+
+.thermal-monitor-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 79px, rgb(174 199 232 / 0.035) 79px 80px),
+    repeating-linear-gradient(0deg, transparent 0 79px, rgb(174 199 232 / 0.025) 79px 80px);
+  mask-image: linear-gradient(180deg, #000, transparent 78%);
+}
+
+body:has(.thermal-monitor-shell) {
+  background: #04070e;
+}
+
+body:has(.thermal-monitor-shell)::before {
+  display: none;
+}
+
+.thermal-monitor-header,
+.thermal-monitor-toolbar,
+.thermal-monitor-workspace,
+.thermal-monitor-footer {
+  width: min(1680px, 100%);
+  margin-inline: auto;
+}
+
+.thermal-monitor-header {
+  display: flex;
+  min-height: 84px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  border-bottom: 1px solid var(--thermal-line);
+}
+
+.thermal-monitor-brand {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.thermal-monitor-brand > a {
+  display: inline-flex;
+  min-height: 38px;
+  padding: 0 12px;
+  align-items: center;
+  border: 1px solid var(--thermal-line);
+  border-radius: 6px;
+  color: #c8d1df;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.thermal-monitor-brand > a:hover {
+  border-color: rgb(112 188 255 / 0.44);
+  background: rgb(112 188 255 / 0.08);
+  color: #fff;
+}
+
+.thermal-monitor-brand p {
+  margin-bottom: 3px;
+  color: #65bdf7;
+  font-size: 0.68rem;
+  font-weight: 780;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.thermal-monitor-brand h1 {
+  margin: 0;
+  color: var(--thermal-ink);
+  font-size: clamp(1.65rem, 2.5vw, 2.45rem);
+  font-weight: 680;
+  line-height: 1;
+  letter-spacing: -0.035em;
+  text-shadow: none;
+}
+
+.thermal-monitor-status {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 2px 9px;
+  align-items: center;
+  color: var(--thermal-muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.thermal-monitor-status strong {
+  color: var(--thermal-ink);
+  font-size: 0.82rem;
+}
+
+.thermal-monitor-status > span:last-child {
+  grid-column: 2;
+}
+
+.thermal-live-dot {
+  grid-row: 1 / span 2;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #50d6a3;
+  box-shadow: 0 0 16px rgb(80 214 163 / 0.72);
+}
+
+.thermal-live-dot.live {
+  animation: thermal-pulse 2.1s ease-out infinite;
+}
+
+.thermal-live-dot.frozen {
+  background: #ffcc58;
+  box-shadow: 0 0 16px rgb(255 204 88 / 0.55);
+}
+
+.thermal-live-dot.offline {
+  background: #ff654f;
+  box-shadow: 0 0 16px rgb(255 101 79 / 0.55);
+}
+
+.thermal-monitor-toolbar {
+  display: flex;
+  min-height: 70px;
+  padding-block: 12px;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--thermal-line);
+}
+
+.thermal-monitor-toolbar label {
+  display: flex;
+  margin-right: auto;
+  align-items: center;
+  gap: 10px;
+  color: var(--thermal-muted);
+  font-size: 0.72rem;
+  font-weight: 730;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.thermal-monitor-toolbar select,
+.thermal-monitor-toolbar button {
+  min-height: 36px;
+  border: 1px solid var(--thermal-line);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.035);
+  box-shadow: none;
+  color: #cdd5e2;
+  font-size: 0.78rem;
+}
+
+.thermal-monitor-toolbar select {
+  min-width: 170px;
+  padding: 0 34px 0 11px;
+  color-scheme: dark;
+}
+
+.thermal-monitor-toolbar button {
+  padding: 0 12px;
+}
+
+.thermal-monitor-toolbar button:hover,
+.thermal-monitor-toolbar button.active {
+  transform: none;
+  border-color: rgb(98 187 255 / 0.5);
+  background: rgb(74 161 230 / 0.12);
+  box-shadow: none;
+  color: #fff;
+}
+
+.thermal-monitor-toolbar button:focus-visible,
+.thermal-monitor-toolbar select:focus-visible {
+  outline: 2px solid rgb(101 189 247 / 0.58);
+  outline-offset: 2px;
+}
+
+.thermal-control-group {
+  display: inline-flex;
+}
+
+.thermal-control-group button {
+  border-radius: 0;
+}
+
+.thermal-control-group button:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.thermal-control-group button:last-child {
+  margin-left: -1px;
+  border-radius: 0 6px 6px 0;
+}
+
+.thermal-monitor-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);
+  gap: clamp(18px, 2.4vw, 34px);
+  padding-block: clamp(18px, 2.6vw, 36px);
+  align-items: stretch;
+}
+
+.thermal-stage {
+  position: relative;
+  display: grid;
+  min-height: min(72vh, 880px);
+  max-height: calc(100svh - 258px);
+  aspect-ratio: 4 / 3;
+  place-items: stretch;
+  overflow: hidden;
+  border: 1px solid rgb(183 202 232 / 0.22);
+  background: #02040a;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.9),
+    0 24px 80px rgb(0 0 0 / 0.42),
+    0 0 48px rgb(23 90 153 / 0.08);
+}
+
+.thermal-stage:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-height: none;
+  aspect-ratio: auto;
+  border: 0;
+  background: #02040a;
+}
+
+.thermal-monitor-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  animation: thermal-frame-in 300ms ease-out both;
+}
+
+.thermal-monitor-canvas.pixels {
+  image-rendering: pixelated;
+}
+
+.thermal-stage-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  padding: 14px 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgb(2 4 10 / 0.62), transparent 15%, transparent 84%, rgb(2 4 10 / 0.45));
+  color: rgb(255 255 255 / 0.82);
+  font-size: 0.72rem;
+  font-weight: 680;
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 8px #000;
+}
+
+.thermal-monitor-empty {
+  display: grid;
+  max-width: 460px;
+  padding: 34px;
+  place-self: center;
+  text-align: center;
+}
+
+.thermal-monitor-empty span {
+  margin-bottom: 12px;
+  color: #65bdf7;
+  font-size: 0.68rem;
+  font-weight: 780;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.thermal-monitor-empty strong {
+  font-size: clamp(1.2rem, 2.4vw, 2rem);
+}
+
+.thermal-monitor-empty p {
+  margin: 10px 0 0;
+  color: var(--thermal-muted);
+}
+
+.thermal-monitor-inspector {
+  display: grid;
+  align-content: start;
+  border-top: 1px solid var(--thermal-line);
+}
+
+.thermal-monitor-inspector > div {
+  display: flex;
+  min-height: 74px;
+  padding: 15px 2px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--thermal-line);
+}
+
+.thermal-monitor-inspector > div > span,
+.thermal-scale > span {
+  color: var(--thermal-muted);
+  font-size: 0.72rem;
+}
+
+.thermal-monitor-inspector > div > strong {
+  color: var(--thermal-ink);
+  font-size: 1.08rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.thermal-monitor-inspector .thermal-scale {
+  display: grid;
+  min-height: 210px;
+  align-items: stretch;
+}
+
+.thermal-scale > div {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 11px;
+  min-height: 140px;
+}
+
+.thermal-scale i {
+  display: block;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  background: linear-gradient(to top, #050a19 0%, #182d85 16%, #10aacd 34%, #3eda84 53%, #f7d843 70%, #ff5b28 86%, #fff4d2 100%);
+  box-shadow: 0 0 22px rgb(24 116 192 / 0.17);
+}
+
+.thermal-scale div > span {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.thermal-scale b {
+  color: #cfd7e5;
+  font-size: 0.69rem;
+  font-weight: 620;
+}
+
+.thermal-monitor-inspector > p {
+  margin: 18px 0 0;
+  color: var(--thermal-muted);
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.thermal-monitor-footer {
+  display: flex;
+  min-height: 52px;
+  padding-top: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  border-top: 1px solid var(--thermal-line);
+  color: var(--thermal-muted);
+  font-size: 0.72rem;
+}
+
+.thermal-monitor-footer strong {
+  color: #d6dce7;
+}
+
+@keyframes thermal-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(80 214 163 / 0.5), 0 0 16px rgb(80 214 163 / 0.62);
+  }
+  65%,
+  100% {
+    box-shadow: 0 0 0 8px rgb(80 214 163 / 0), 0 0 16px rgb(80 214 163 / 0.5);
+  }
+}
+
+@keyframes thermal-frame-in {
+  from {
+    opacity: 0.7;
+    filter: contrast(0.92);
+  }
+  to {
+    opacity: 1;
+    filter: contrast(1);
+  }
 }
 
 .privacy-panel ul {
@@ -1725,5 +2173,70 @@ circle {
 
   .pipeline-step small {
     width: fit-content;
+  }
+
+  .thermal-monitor-shell {
+    padding: 14px;
+  }
+
+  .thermal-monitor-header,
+  .thermal-monitor-toolbar,
+  .thermal-monitor-footer {
+    align-items: flex-start;
+  }
+
+  .thermal-monitor-header,
+  .thermal-monitor-footer {
+    display: grid;
+    padding-block: 14px;
+  }
+
+  .thermal-monitor-brand {
+    display: grid;
+    gap: 12px;
+  }
+
+  .thermal-monitor-brand > a {
+    width: fit-content;
+  }
+
+  .thermal-monitor-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .thermal-monitor-toolbar label {
+    width: 100%;
+    margin: 0 0 4px;
+    justify-content: space-between;
+  }
+
+  .thermal-monitor-toolbar select {
+    flex: 1;
+  }
+
+  .thermal-monitor-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .thermal-stage {
+    min-height: 0;
+    max-height: none;
+  }
+
+  .thermal-monitor-inspector {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 16px;
+  }
+
+  .thermal-monitor-inspector .thermal-scale,
+  .thermal-monitor-inspector > p {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thermal-live-dot.live,
+  .thermal-monitor-canvas {
+    animation: none;
   }
 }

@@ -647,6 +647,9 @@ function FeaturedRecommendation({ item, room, selected, onSelect }: { item: Reco
       <Score value={item.score} />
       <StateBadges room={room} item={item} />
       <p>{item.explanation}</p>
+      <small className="explanation-source">
+        {item.explanation_source === "llm" ? "Local LLM explanation" : item.explanation_source === "template" ? "Template explanation" : "Stub fallback"}
+      </small>
     </button>
   );
 }
@@ -720,7 +723,7 @@ function RoomDetail({
       />
       <div className="split">
         <TrendChart points={history} />
-        <ThermalPreview preview={thermalPreview} />
+        <ThermalPreview preview={thermalPreview} roomId={room.room_id} />
       </div>
       {onChoose ? (
         <div className="selection-action">
@@ -969,7 +972,11 @@ function AdminDashboard({
             <QualityItem label="Raw RGB camera" value="Disabled" tone="ok" />
             <QualityItem label="Face or identity recognition" value="Not used" tone="ok" />
             <QualityItem label="Raw voice storage" value="Blocked" tone="ok" />
-            <QualityItem label="LLM explanation fallback" value={data.recommendations.warnings.includes("LLM_TEMPLATE_FALLBACK") ? "Template active" : "Normal"} tone="warning" />
+            <QualityItem
+              label="LLM explanation fallback"
+              value={data.recommendations.recommendations.some((item) => item.explanation_source === "template") ? "Template active" : "Local LLM active"}
+              tone={data.recommendations.recommendations.some((item) => item.explanation_source === "template") ? "warning" : "ok"}
+            />
             <QualityItem label="Recommendation warnings" value={`${data.recommendations.warnings.length}`} tone={data.recommendations.warnings.length ? "warning" : "ok"} />
           </div>
         </section>
@@ -1187,8 +1194,10 @@ function TrendChart({ points }: { points: HistoryPoint[] }) {
   );
 }
 
-function ThermalPreview({ preview }: { preview?: ThermalPreviewResponse }) {
+function ThermalPreview({ preview, roomId }: { preview?: ThermalPreviewResponse; roomId: string }) {
   const cells = useMemo(() => preview?.values?.slice(0, 32 * 24) ?? [], [preview]);
+  const thermalParams = new URLSearchParams({ room: roomId });
+  thermalParams.set("mode", isRealApi ? "api" : "mock");
   return (
     <section className="thermal" aria-label="Thermal preview">
       <div className="panel-heading">
@@ -1205,6 +1214,9 @@ function ThermalPreview({ preview }: { preview?: ThermalPreviewResponse }) {
         <p className="empty">Unavailable: {preview?.unavailable_reason ?? "not_available"}</p>
       )}
       <p className="inline-note">Non-camera image for current overall heat distribution only; not saved as history.</p>
+      <a className="thermal-monitor-link" href={`/thermal?${thermalParams.toString()}`}>
+        Open full thermal monitor
+      </a>
     </section>
   );
 }

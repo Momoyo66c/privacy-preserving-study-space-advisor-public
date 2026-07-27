@@ -78,7 +78,37 @@ export function allCandidateIds() {
 }
 
 export async function loadLiveSensorSnapshot(roomId: string) {
+  if (API_MODE === "mock") {
+    await delay(120);
+    const dashboard = buildDashboardData(defaultRequest);
+    const room = dashboard.rooms.find((candidate) => candidate.room_id === roomId) ?? dashboard.rooms[0];
+    if (!room) throw new Error("No rooms are available.");
+    return {
+      schema_version: "1.0",
+      generated_at: new Date().toISOString(),
+      room,
+      thermal_preview: dashboard.thermalPreviews[room.room_id],
+      sound_preview: {
+        schema_version: "1.0",
+        room_id: room.room_id,
+        available: room.features.sound_rms_mean != null,
+        captured_at: new Date().toISOString(),
+        rms: room.features.sound_rms_mean ?? null,
+        expires_at: new Date(Date.now() + 30_000).toISOString(),
+        unavailable_reason: room.features.sound_rms_mean == null ? "not_available" : null,
+      },
+    } satisfies LiveSensorSnapshotResponse;
+  }
   return getJson<LiveSensorSnapshotResponse>(`/api/v1/rooms/${encodeURIComponent(roomId)}/live`);
+}
+
+export async function loadRoomStatuses() {
+  if (API_MODE === "mock") {
+    await delay(80);
+    return mockRooms;
+  }
+  const response = await getJson<{ rooms: RoomStatus[] }>("/api/v1/rooms/status");
+  return response.rooms;
 }
 
 export async function loadSoundPreview(roomId: string) {

@@ -7,6 +7,9 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: "./tests/setup.ts",
+    env: {
+      VITE_API_MODE: "mock",
+    },
     exclude: ["tests/e2e/**", "tests/gate-a/**", "node_modules/**", "dist/**"],
   },
 });

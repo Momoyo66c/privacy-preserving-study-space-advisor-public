@@ -7,7 +7,7 @@
 
 面向校园学习空间的隐私保护型 AIoT 推荐系统。ESP32 Sensor Hub 采集低分辨率热阵列、相对光照和温湿度；由于现有 HW-485 无法稳定区分持续声强，当前实机演示使用 Windows 麦克风在内存中计算相对 RMS、标准差和峰值，再通过认证的 SSH 回环隧道交给 Raspberry Pi 5。边缘流程把数据转换为不含身份信息的房间状态摘要；后端负责状态、历史、短期预测、登录会话、选择记录和偏好学习；React Dashboard 展示房间状态、实时传感器、推荐、趋势和隐私说明。共享契约保留可选雷达字段，但最终生产硬件不安装雷达。
 
-> 状态快照（2026-07-23）：最新 `origin/main` 为 `6c5000e`，已合并 Module 1 实机链路、Windows 声音摘要替代方案和四场景真实样本。该提交上的 Module 1 CI、Backend CI、Repository checks 和 Gate A integration 均已通过。
+> 状态快照（2026-07-27）：Module 1 实机链路、Windows 声音摘要替代方案、四场景真实样本、Module 2 规则基线、Module 3 后端、React Dashboard 和 Gate A 已具备；当前交付补齐了 Module 4 正式推荐、模板/Ollama 解释与 Gate C 本机验证。
 
 ## 当前系统链路
 
@@ -17,11 +17,13 @@ flowchart LR
     M -->|"EdgeObservation 1.0"| B["Module 3：FastAPI、SQLite、状态与预测"]
     H -.->|"当前实机展示桥：预览与传感器摘要，不做分类"| B
     B -->|"真实 API"| D["Module 4：React Dashboard"]
-    B --> S["当前确定性 recommendation stub"]
+    B --> S["Module 4 确定性规则推荐"]
+    S -->|"固定排名与结构化理由"| L["模板 / 本地 Ollama 解释"]
     S --> D
+    L --> D
 ```
 
-Gate A 已证明模拟链路可以从 Module 1 连续运行到真实后端和浏览器。实机采集、匿名会话、实时预览以及四份真实会话的离线 Module 2 特征/推理已经验收。当前现场展示桥仍绕过 Module 2，向后端发布 `room_state=unknown` 的传感器摘要，因此 Gate B 还需要把在线推理正式接入这条实时链路。正式推荐算法属于 Gate C。
+Gate A 已证明模拟链路可以从 Module 1 连续运行到真实后端和浏览器。实机采集、匿名会话、实时预览以及四份真实会话的离线 Module 2 特征/推理已经验收。当前现场展示桥仍绕过 Module 2，向后端发布 `room_state=unknown` 的传感器摘要，因此 Gate B 还需要把在线推理正式接入这条实时链路。Gate C 的确定性推荐和本地 LLM 降级已在 Windows RTX 4060 Laptop 上通过本机验证。
 
 ## 模块完成情况
 
@@ -30,9 +32,9 @@ Gate A 已证明模拟链路可以从 Module 1 连续运行到真实后端和浏
 | Module 1：传感器与边缘硬件 | `edge/hardware/` | 统一驱动接口、ESP32 Hub、MLX90640/HW-485/HW-486/DHT11、Windows 声音摘要替代、确定性模拟器、窗口化、会话校验、实时预览和四类真实样本 | 实物 HW-485 仍不适合持续声强分类；当前依赖固定电脑麦克风。HW-486 只有设备内相对值；仍需完成在线 Module 2 接入 |
 | Module 2：边缘 ML | `edge/ml/` | `SensorWindow` 校验、热/声/环境特征、确定性规则模型、四类真实标签阈值重标定、`EdgeObservation` 生成与后端上传 CLI | 合并或移除根目录第二套 `ml/`；实现多会话 group split、Random Forest/基线、独立真实评估、Model Card、Pi benchmark 和专用 CI |
 | Module 3：后端与数据智能 | `backend/` | FastAPI、SQLite/Alembic、Observation 幂等写入、状态/历史/15–30 分钟预测、热图 TTL、认证、选择记录、偏好学习、清理/seed/backtest、Docker 和后端 CI | 生产部署、安全加固和外部数据库不在当前原型范围；正式推荐算法仍由 Module 4 提供 |
-| Module 4：推荐与前端 | `frontend/` 与后端 adapter 边界 | React/Vite Dashboard、mock/真实 API、注册登录、手动偏好、显式选择教室、学生/演示管理视图、组件和 Playwright 测试 | 后端仍使用 `StubRecommendationAdapter`；需实现正式规则评分、模板/LLM 降级；补选择历史、学习开关/重置、删除账号和失败 outbox 等完整 UI |
+| Module 4：推荐与前端 | `frontend/` 与后端 adapter 边界 | React/Vite Dashboard、mock/真实 API、注册登录、手动偏好、显式选择教室、确定性规则评分、模板解释、本地 Ollama 解释与自动降级、热成像独立页面、组件和 Playwright 测试 | 补选择历史、学习开关/重置、删除账号和失败 outbox 等完整 UI；真实演示仍需 Gate D 现场复核 |
 
-注意：当前规则模型和 recommendation stub 只用于集成与演示，不能作为真实环境下的分类准确率或正式个性化推荐效果声明。
+注意：Module 2 当前规则分类仍只用于集成与演示。Module 4 的推荐排序是可解释的确定性规则基线，不应被描述为经过真实用户效果验证的最优算法。
 
 ## 真实数据与训练状态
 
@@ -55,7 +57,7 @@ Gate A 已证明模拟链路可以从 Module 1 连续运行到真实后端和浏
 |---|---|---|
 | Gate A — 模拟数据贯通 | Module 1 模拟窗口 → Module 2 → Module 3 → Dashboard | **已完成并进入 CI**；Python 集成测试和真实 API Playwright E2E 均通过 |
 | Gate B — 真实传感器贯通 | 最终实机输入持续产生有效窗口并完成边缘推理 | **部分完成**；ESP32 传感器、Windows 声音摘要、四类真实会话、整包校验和离线 Module 2 流水线已通过；在线展示桥尚未调用 Module 2，需补真实 `EdgeObservation` 到 Dashboard 的连续链路 |
-| Gate C — 推荐与降级 | 三个房间由正式规则确定排序，LLM/单传感器故障不阻断核心流程 | **未完成**；Dashboard 已有，但正式 Module 4 adapter、模板解释和 LLM provider 尚未实现 |
+| Gate C — 推荐与降级 | 三个房间由正式规则确定排序，LLM/单传感器故障不阻断核心流程 | **代码和本机验收已完成**；规则 adapter、模板/Ollama provider、隐私校验和排名不变性测试已通过，1.7B provider 预热 P95 为 1.40 秒，完整 API P95 为 2.28 秒 |
 | Gate D — 最终演示 | 连续运行至少 15 分钟并展示状态、趋势、预测、偏好变化、推荐和本地指示 | **未完成**；依赖 Gate B、Gate C 和现场记录 |
 
 Gate A 的实现与限制见 [`tests/integration/GATE_A_HANDOFF.md`](tests/integration/GATE_A_HANDOFF.md)。
@@ -67,7 +69,7 @@ Gate A 的实现与限制见 [`tests/integration/GATE_A_HANDOFF.md`](tests/integ
 - 完整热帧只允许在本地离线会话中短期使用；后端 Observation、推荐上下文和日志不得包含完整热阵列。
 - 浏览器热图仅为短时、归一化的 32 × 24 预览，后端不持久化。
 - 登录账号不收集姓名、邮箱或学号；密码使用 Argon2id，数据库只保存会话令牌哈希。
-- LLM 未来只能润色已经确定的结构化理由，不能更改排名，也不能接收原始传感器或身份数据。
+- LLM 只能润色已经确定的结构化理由，不能更改排名，也不能接收原始传感器、身份数据或选择历史；不可用时整批回退模板。
 
 ## 快速验证 Gate A
 
@@ -161,7 +163,7 @@ VITE_SOUND_POLL_MS=250
 1. 把 Module 2 在线推理接入实机采集与后端，避免现场展示长期停留在 `room_state=unknown`，完成 Gate B。
 2. 按固定种子生成与真实目录隔离的虚拟会话，并补更多独立真实会话；以 `session_id` 分组实现基线、Random Forest、评估、Model Card 和 Pi benchmark。
 3. 合并或移除根目录第二套 `ml/`，为唯一 Module 2 实现增加专用 CI。
-4. 实现 Module 4 正式确定性推荐 adapter、模板解释和可选 LLM provider，完成 Gate C。
+4. 在主线 CI 中复核 Gate C，并完成关闭 Ollama 与单传感器故障的现场演示记录。
 5. 补齐登录用户的选择历史、学习控制、删除账号和选择失败 outbox UI。
 6. 完成 Gate D 15 分钟现场演示、跨日期真实测试和项目许可证决策。
 
@@ -174,6 +176,7 @@ VITE_SOUND_POLL_MS=250
 - [Module 2 规格](docs/module-specs/02_EDGE_ML_PIPELINE.md) / [运行说明](edge/ml/README.md)
 - [Module 3 规格](docs/module-specs/03_BACKEND_DATA_INTELLIGENCE.md) / [运行说明](backend/README.md) / [交接说明](backend/MODULE3_HANDOFF.md)
 - [Module 4 规格](docs/module-specs/04_RECOMMENDATION_FRONTEND.md) / [运行说明](frontend/README.md) / [交接说明](frontend/MODULE4_HANDOFF.md)
+- [Gate C Windows 本地 LLM 与降级手册](docs/GATE_C_LOCAL_LLM.md)
 - [Gate A 交接说明](tests/integration/GATE_A_HANDOFF.md)
 - [项目使用与协作教程](docs/USAGE_GUIDE.md)
 - [贡献与 Pull Request 规则](CONTRIBUTING.md)

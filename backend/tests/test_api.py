@@ -9,13 +9,16 @@ from study_space_api.config import Settings
 from study_space_api.database import Base
 from study_space_api.main import create_app
 from study_space_api import models
+from study_space_api.recommendation.adapter import RuleBasedRecommendationAdapter
 
 
-def test_health_reports_stub_as_degraded(client: TestClient) -> None:
+def test_health_reports_formal_template_adapter(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json()["status"] == "degraded"
-    assert response.json()["recommendation_adapter"]["mode"] == "stub"
+    assert response.json()["status"] == "ok"
+    assert response.json()["recommendation_adapter"]["name"] == "module4-rule-based-v1"
+    assert response.json()["recommendation_adapter"]["mode"] == "template"
+    assert response.json()["recommendation_adapter"]["llm_status"] == "disabled"
     assert response.headers["x-request-id"]
 
 
@@ -119,18 +122,89 @@ def test_live_sensor_snapshot_combines_status_and_ephemeral_preview(client: Test
     assert client.get("/api/v1/rooms/missing/live").status_code == 404
 
 
-def test_recommendation_stub_and_record(client: TestClient, valid_observation: dict, app) -> None:
+def test_formal_recommendation_and_record(client: TestClient, valid_observation: dict, app) -> None:
     client.post("/api/v1/edge/observations", json=valid_observation)
     body = {"schema_version":"1.0","profile_id":"demo-user","study_mode":"quiet","preferences":{"quiet_priority":0.9,"low_occupancy_priority":0.8,"brightness_priority":0.4,"comfort_priority":0.5,"distance_priority":0.3},"candidate_room_ids":["room_a","room_b","room_c"]}
     response = client.post("/api/v1/recommendations", json=body)
     assert response.status_code == 200
     assert response.json()["recommendations"][0]["room_id"] == "room_a"
-    assert response.json()["recommendations"][0]["explanation_source"] == "stub"
+    assert response.json()["recommendations"][0]["explanation_source"] == "template"
+    assert response.json()["warnings"] == ["LLM_DISABLED"]
     with app.state.database.session() as session:
         record = session.query(models.RecommendationRecord).one()
-        assert record.adapter_name == "module3-deterministic-stub"
-        assert record.score_breakdown_json is None
+        assert record.adapter_name == "module4-rule-based-v1"
+        assert record.score_breakdown_json
+        assert record.fallback_reason == "LLM_DISABLED"
         assert "values" not in str(record.rankings_json)
+
+
+def test_gate_c_llm_changes_only_explanations(
+    client: TestClient,
+    valid_observation: dict,
+    app,
+) -> None:
+    class FixedExplanationProvider:
+        name = "test-provider"
+        model = "test-model"
+
+        async def health(self):
+            return {
+                "status": "ok",
+                "provider": self.name,
+                "model": self.model,
+                "llm_status": "available",
+            }
+
+        async def explain(self, items, rooms, study_mode):
+            return {
+                item.room_id: "Current occupancy and sensor data support this study option."
+                for item in items
+            }
+
+    room_payloads = [
+        ("room_a", "device-a", "quiet_study_recommended", "low", 0.08),
+        ("room_b", "device-b", "discussion_allowed", "medium", 0.42),
+        ("room_c", "device-c", "not_recommended_noisy_or_crowded", "high", 0.86),
+    ]
+    for room_id, device_id, room_state, occupancy, sound in room_payloads:
+        payload = deepcopy(valid_observation)
+        payload["observation_id"] = f"gate-c-{room_id}"
+        payload["room_id"] = room_id
+        payload["device_id"] = device_id
+        payload["room_state"] = room_state
+        payload["occupancy_level"] = occupancy
+        payload["features"]["sound_rms_mean"] = sound
+        assert client.post("/api/v1/edge/observations", json=payload).status_code == 200
+
+    body = {
+        "schema_version": "1.0",
+        "profile_id": "gate-c-profile",
+        "study_mode": "quiet",
+        "preferences": {
+            "quiet_priority": 1,
+            "low_occupancy_priority": 1,
+            "brightness_priority": 0.5,
+            "comfort_priority": 0.5,
+            "distance_priority": 0,
+        },
+        "candidate_room_ids": ["room_a", "room_b", "room_c"],
+    }
+    template = client.post("/api/v1/recommendations", json=body)
+    app.state.recommendation_adapter = RuleBasedRecommendationAdapter(FixedExplanationProvider())
+    llm = client.post("/api/v1/recommendations", json=body)
+
+    assert template.status_code == llm.status_code == 200
+    template_items = template.json()["recommendations"]
+    llm_items = llm.json()["recommendations"]
+    assert [
+        {key: value for key, value in item.items() if key not in {"explanation", "explanation_source"}}
+        for item in template_items
+    ] == [
+        {key: value for key, value in item.items() if key not in {"explanation", "explanation_source"}}
+        for item in llm_items
+    ]
+    assert {item["explanation_source"] for item in template_items} == {"template"}
+    assert {item["explanation_source"] for item in llm_items} == {"llm"}
 
 
 def test_anonymous_demo_endpoints_can_be_disabled(client: TestClient, app) -> None:

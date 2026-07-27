@@ -8,11 +8,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .adapters.recommendation import RecommendationAdapter
-from .adapters.recommendation_stub import StubRecommendationAdapter
 from .api import router
 from .config import Settings, get_settings
 from .database import Database
 from .errors import BodyLimitMiddleware, RequestIdMiddleware, install_exception_handlers
+from .recommendation import build_recommendation_adapter
 from .services.auth import LoginAttemptLimiter
 from .services.sound import SoundPreviewCache
 from .services.thermal import ThermalPreviewCache
@@ -36,7 +36,7 @@ def create_app(settings: Settings | None = None, adapter: RecommendationAdapter 
     app.state.database = Database(settings.database_url)
     app.state.thermal_cache = ThermalPreviewCache()
     app.state.sound_cache = SoundPreviewCache()
-    app.state.recommendation_adapter = adapter or StubRecommendationAdapter()
+    app.state.recommendation_adapter = adapter or build_recommendation_adapter(settings)
     app.state.login_attempt_limiter = LoginAttemptLimiter(
         settings.login_max_failures,
         settings.login_failure_window_seconds,
