@@ -38,6 +38,9 @@ import {
   X,
 } from "lucide-react";
 import {
+  createSelectionId,
+  deleteMe,
+  deleteRoomSelections,
   defaultRequest,
   isRealApi,
   loadDashboardData,
@@ -46,7 +49,9 @@ import {
   loadWeather,
   login,
   logout,
+  recordRoomSelection,
   register,
+  resetLearnedPreferences,
   restoreSession,
   saveMyPreferences,
 } from "../api/client";
@@ -69,6 +74,13 @@ import type {
 type StudentPage = "home" | "rooms" | "preferences" | "account";
 type AdminPage = "overview" | "monitor" | "rooms" | "system";
 type AuthRole = "student" | "admin";
+type FailedSelection = {
+  selectionId: string;
+  roomId: string;
+  roomName: string;
+  recommendationRequestId: string | null;
+  source: "recommendation" | "room_detail";
+};
 
 const roomStateText: Record<RoomState, Record<Language, string>> = {
   empty_or_low_activity: { zh: "安静空闲", en: "Quiet and available" },
@@ -114,6 +126,8 @@ function AppContent() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectionMessage, setSelectionMessage] = useState<string | null>(null);
+  const [outbox, setOutbox] = useState<FailedSelection[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -183,6 +197,8 @@ function AppContent() {
     setData(null);
     setWeather(null);
     setRequest(defaultRequest);
+    setSelectionMessage(null);
+    setOutbox([]);
   }
 
   async function refresh(nextRequest = request) {
@@ -215,6 +231,84 @@ function AppContent() {
     }
   }
 
+  async function toggleLearning(enabled: boolean) {
+    if (!user) return;
+    setRefreshing(true);
+    setError(null);
+    try {
+      await saveMyPreferences(user, request, enabled);
+      setData(await loadDashboardData(user, request));
+    } catch (err) {
+      setError(messageFrom(err, choose("偏好学习设置保存失败。", "The learning setting could not be saved."), language));
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function resetLearned() {
+    if (!user) return;
+    setRefreshing(true);
+    setError(null);
+    try {
+      await resetLearnedPreferences();
+      setData(await loadDashboardData(user, request));
+    } catch (err) {
+      setError(messageFrom(err, choose("学习偏好重置失败。", "Learned preferences could not be reset."), language));
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function clearSelections() {
+    if (!user) return;
+    setRefreshing(true);
+    setError(null);
+    try {
+      await deleteRoomSelections();
+      setData(await loadDashboardData(user, request));
+    } catch (err) {
+      setError(messageFrom(err, choose("选择历史删除失败。", "Room selection history could not be deleted."), language));
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function deleteAccount() {
+    if (!window.confirm(choose("删除本地账户和全部学习记录？", "Delete this local account and all learning data?"))) return;
+    try {
+      await deleteMe();
+      setUser(null);
+      setData(null);
+      setWeather(null);
+      setOutbox([]);
+    } catch (err) {
+      setError(messageFrom(err, choose("账户删除失败。", "The account could not be deleted."), language));
+    }
+  }
+
+  async function chooseRoom(
+    roomId: string,
+    roomName: string,
+    recommendationRequestId: string | null,
+    source: FailedSelection["source"],
+    selectionId = createSelectionId(),
+  ) {
+    if (!user) return;
+    setSelectionMessage(null);
+    try {
+      await recordRoomSelection(roomId, recommendationRequestId, source, selectionId);
+      setOutbox((items) => items.filter((item) => item.selectionId !== selectionId));
+      setSelectionMessage(choose("选择已记录，将用于改善推荐。", "Choice recorded and available for preference learning."));
+      setData(await loadDashboardData(user, request));
+    } catch (err) {
+      setOutbox((items) => [
+        ...items.filter((item) => item.selectionId !== selectionId),
+        { selectionId, roomId, roomName, recommendationRequestId, source },
+      ]);
+      setSelectionMessage(messageFrom(err, choose("记录失败，已加入本地重试队列。", "Recording failed and was added to the local retry queue."), language));
+    }
+  }
+
   if (loading) return <AppLoading />;
   if (!user) return <AuthPortal onAuthenticate={authenticate} />;
   if (!data) {
@@ -243,6 +337,14 @@ function AppContent() {
       refreshing={refreshing}
       onRefresh={() => void refresh()}
       onSavePreferences={updatePreferences}
+      onChooseRoom={chooseRoom}
+      selectionMessage={selectionMessage}
+      outbox={outbox}
+      onRetrySelection={(item) => chooseRoom(item.roomId, item.roomName, item.recommendationRequestId, item.source, item.selectionId)}
+      onLearningToggle={toggleLearning}
+      onResetLearned={resetLearned}
+      onDeleteSelections={clearSelections}
+      onDeleteAccount={deleteAccount}
       onSignOut={() => void signOut()}
     />
   );
@@ -317,9 +419,11 @@ function AuthPortal({
             <button type="button" className={role === "student" ? "active" : ""} onClick={() => switchRole("student")}>
               {choose("普通用户", "Student")}
             </button>
-            <button type="button" className={role === "admin" ? "active" : ""} onClick={() => switchRole("admin")}>
-              {choose("管理员", "Administrator")}
-            </button>
+            {!isRealApi ? (
+              <button type="button" className={role === "admin" ? "active" : ""} onClick={() => switchRole("admin")}>
+                {choose("管理员", "Administrator")}
+              </button>
+            ) : null}
           </div>
           <div className="auth-heading">
             <div className="auth-icon">{role === "admin" ? <Settings /> : <UserCircle />}</div>
@@ -352,8 +456,8 @@ function AuthPortal({
                 value={password}
                 onChange={(event) => setPassword(event.currentTarget.value)}
                 autoComplete={mode === "register" ? "new-password" : "current-password"}
-                minLength={8}
-                placeholder={choose("至少 8 个字符", "At least 8 characters")}
+                minLength={10}
+                placeholder={choose("至少 10 个字符", "At least 10 characters")}
                 type="password"
                 required
               />
@@ -394,6 +498,14 @@ function StudentApp({
   refreshing,
   onRefresh,
   onSavePreferences,
+  onChooseRoom,
+  selectionMessage,
+  outbox,
+  onRetrySelection,
+  onLearningToggle,
+  onResetLearned,
+  onDeleteSelections,
+  onDeleteAccount,
   onSignOut,
 }: {
   user: UserResponse;
@@ -405,6 +517,19 @@ function StudentApp({
   refreshing: boolean;
   onRefresh: () => void;
   onSavePreferences: (request: RecommendationRequest) => Promise<void>;
+  onChooseRoom: (
+    roomId: string,
+    roomName: string,
+    recommendationRequestId: string | null,
+    source: FailedSelection["source"],
+  ) => Promise<void>;
+  selectionMessage: string | null;
+  outbox: FailedSelection[];
+  onRetrySelection: (item: FailedSelection) => Promise<void>;
+  onLearningToggle: (enabled: boolean) => Promise<void>;
+  onResetLearned: () => Promise<void>;
+  onDeleteSelections: () => Promise<void>;
+  onDeleteAccount: () => Promise<void>;
   onSignOut: () => void;
 }) {
   const { choose } = useLanguage();
@@ -463,10 +588,41 @@ function StudentApp({
       ) : null}
       {error ? <StatusBanner text={error} /> : null}
       <main className="page-content">
-        {page === "home" ? <HomeView user={user} data={data} weather={weather} weatherError={weatherError} onOpenRoom={openRoom} /> : null}
-        {page === "rooms" ? <RoomsView data={data} selectedRoomId={selectedRoomId} onSelectRoom={selectRoom} /> : null}
+        {selectionMessage ? <StatusBanner text={selectionMessage} /> : null}
+        {page === "home" ? (
+          <HomeView
+            user={user}
+            data={data}
+            weather={weather}
+            weatherError={weatherError}
+            onOpenRoom={openRoom}
+            onChooseRoom={onChooseRoom}
+          />
+        ) : null}
+        {page === "rooms" ? (
+          <RoomsView
+            data={data}
+            selectedRoomId={selectedRoomId}
+            onSelectRoom={selectRoom}
+            onChooseRoom={onChooseRoom}
+          />
+        ) : null}
         {page === "preferences" ? <PreferencesView request={request} busy={refreshing} onSave={onSavePreferences} /> : null}
-        {page === "account" ? <AccountView user={user} preferences={data.preferences ?? null} onSignOut={onSignOut} /> : null}
+        {page === "account" ? (
+          <AccountView
+            user={user}
+            preferences={data.preferences ?? null}
+            history={data.selectionHistory ?? null}
+            outbox={outbox}
+            busy={refreshing}
+            onRetrySelection={onRetrySelection}
+            onLearningToggle={onLearningToggle}
+            onResetLearned={onResetLearned}
+            onDeleteSelections={onDeleteSelections}
+            onDeleteAccount={onDeleteAccount}
+            onSignOut={onSignOut}
+          />
+        ) : null}
       </main>
       <nav className="mobile-bottom-nav" aria-label={choose("底部导航", "Bottom navigation")}>
         <StudentNav page={page} onNavigate={navigate} compact />
@@ -510,12 +666,19 @@ function HomeView({
   weather,
   weatherError,
   onOpenRoom,
+  onChooseRoom,
 }: {
   user: UserResponse;
   data: DashboardData;
   weather: WeatherInfo | null;
   weatherError: boolean;
   onOpenRoom: (roomId: string) => void;
+  onChooseRoom: (
+    roomId: string,
+    roomName: string,
+    recommendationRequestId: string | null,
+    source: FailedSelection["source"],
+  ) => Promise<void>;
 }) {
   const { language, locale, choose } = useLanguage();
   const [now, setNow] = useState(() => new Date());
@@ -576,7 +739,16 @@ function HomeView({
           <div className="recommendation-list">
             {recommendations.map((item, index) => {
               const room = data.rooms.find((entry) => entry.room_id === item.room_id);
-              return room ? <RecommendationCard key={item.room_id} room={room} item={item} featured={index === 0} onOpen={() => onOpenRoom(room.room_id)} /> : null;
+              return room ? (
+                <RecommendationCard
+                  key={item.room_id}
+                  room={room}
+                  item={item}
+                  featured={index === 0}
+                  onOpen={() => onOpenRoom(room.room_id)}
+                  onChoose={() => onChooseRoom(room.room_id, room.name, data.recommendations.request_id, "recommendation")}
+                />
+              ) : null;
             })}
           </div>
         ) : (
@@ -608,11 +780,13 @@ function RecommendationCard({
   item,
   featured,
   onOpen,
+  onChoose,
 }: {
   room: RoomStatus;
   item: RecommendationItem;
   featured: boolean;
   onOpen: () => void;
+  onChoose: () => Promise<void>;
 }) {
   const { language, choose } = useLanguage();
   const catalog = catalogFor(room, language);
@@ -636,10 +810,16 @@ function RecommendationCard({
           ? <span>{choose("建议到场确认", "Verify on arrival")}</span>
           : <span>{choose("状态刚刚更新", "Updated just now")}</span>}
       </div>
-      <button type="button" className="card-link" onClick={onOpen}>
-        {choose("查看教室", "View room")}
-        <ArrowRight size={17} />
-      </button>
+      <div className="recommendation-actions">
+        <button type="button" className="secondary-button" onClick={() => void onChoose()}>
+          <CheckCircle2 size={17} />
+          {choose("选择此教室", "Choose this room")}
+        </button>
+        <button type="button" className="card-link" onClick={onOpen}>
+          {choose("查看教室", "View room")}
+          <ArrowRight size={17} />
+        </button>
+      </div>
     </article>
   );
 }
@@ -648,10 +828,17 @@ function RoomsView({
   data,
   selectedRoomId,
   onSelectRoom,
+  onChooseRoom,
 }: {
   data: DashboardData;
   selectedRoomId: string;
   onSelectRoom: (roomId: string) => void;
+  onChooseRoom: (
+    roomId: string,
+    roomName: string,
+    recommendationRequestId: string | null,
+    source: FailedSelection["source"],
+  ) => Promise<void>;
 }) {
   const { language, choose } = useLanguage();
   const [query, setQuery] = useState("");
@@ -670,7 +857,21 @@ function RoomsView({
   });
 
   if (selectedRoom) {
-    return <StudentRoomDetail room={selectedRoom} recommendation={selectedRecommendation ?? null} onBack={() => onSelectRoom("")} />;
+    return (
+      <StudentRoomDetail
+        room={selectedRoom}
+        recommendation={selectedRecommendation ?? null}
+        onBack={() => onSelectRoom("")}
+        onChoose={() =>
+          onChooseRoom(
+            selectedRoom.room_id,
+            selectedRoom.name,
+            selectedRecommendation ? data.recommendations.request_id : null,
+            selectedRecommendation ? "recommendation" : "room_detail",
+          )
+        }
+      />
+    );
   }
 
   return (
@@ -747,10 +948,12 @@ function StudentRoomDetail({
   room,
   recommendation,
   onBack,
+  onChoose,
 }: {
   room: RoomStatus;
   recommendation: RecommendationItem | null;
   onBack: () => void;
+  onChoose: () => Promise<void>;
 }) {
   const { language, choose } = useLanguage();
   const catalog = catalogFor(room, language);
@@ -804,6 +1007,10 @@ function StudentRoomDetail({
           <div><Users /><span><small>{choose("空间类型", "Space type")}</small><strong>{catalog.capacity}</strong></span></div>
           <div><DoorOpen /><span><small>{choose("访问方式", "Access")}</small><strong>{catalog.accessNote}</strong></span></div>
           <a href={catalog.mapUrl} target="_blank" rel="noreferrer">{choose("在地图中查看", "View on map")}<ExternalLink size={16} /></a>
+          <button type="button" className="primary-button" onClick={() => void onChoose()}>
+            <CheckCircle2 size={18} />
+            {choose("选择此教室", "Choose this room")}
+          </button>
           <p>{choose(
             "开放时间与预约状态可能因课表、假期和活动调整，请以 uNivUS 或现场信息为准。",
             "Opening hours and booking availability may change with timetables, holidays and events. Check uNivUS or on-site notices before visiting.",
@@ -921,10 +1128,26 @@ function PreferenceSlider({
 function AccountView({
   user,
   preferences,
+  history,
+  outbox,
+  busy,
+  onRetrySelection,
+  onLearningToggle,
+  onResetLearned,
+  onDeleteSelections,
+  onDeleteAccount,
   onSignOut,
 }: {
   user: UserResponse;
   preferences: MePreferenceResponse | null;
+  history: DashboardData["selectionHistory"];
+  outbox: FailedSelection[];
+  busy: boolean;
+  onRetrySelection: (item: FailedSelection) => Promise<void>;
+  onLearningToggle: (enabled: boolean) => Promise<void>;
+  onResetLearned: () => Promise<void>;
+  onDeleteSelections: () => Promise<void>;
+  onDeleteAccount: () => Promise<void>;
   onSignOut: () => void;
 }) {
   const { locale, choose } = useLanguage();
@@ -951,8 +1174,75 @@ function AccountView({
         <ShieldCheck size={26} />
       </section>
       <section className="account-section">
-        <div><h2>{choose("当前会话", "Current session")}</h2><p>{choose("偏好学习", "Preference learning")}: {preferences?.learning_enabled === false ? choose("已暂停", "Paused") : choose("已开启", "Enabled")}</p></div>
+        <div>
+          <h2>{choose("选择历史与偏好学习", "Choice history and preference learning")}</h2>
+          <p>
+            {choose("只记录你明确点击“选择此教室”的操作。", "Only explicit “Choose this room” actions are recorded.")}
+          </p>
+          <label className="learning-toggle">
+            <input
+              type="checkbox"
+              checked={preferences?.learning_enabled ?? true}
+              disabled={busy}
+              onChange={(event) => void onLearningToggle(event.currentTarget.checked)}
+            />
+            <span>{choose("允许选择历史影响推荐", "Allow choice history to influence recommendations")}</span>
+          </label>
+        </div>
+        <div className="account-actions">
+          <button type="button" className="secondary-button" disabled={busy} onClick={() => void onResetLearned()}>
+            {choose("重置学习偏好", "Reset learned preferences")}
+          </button>
+          <button type="button" className="secondary-button" disabled={busy} onClick={() => void onDeleteSelections()}>
+            {choose("删除选择历史", "Delete choice history")}
+          </button>
+        </div>
+      </section>
+      {history?.selections.length ? (
+        <section className="account-section selection-history">
+          <div>
+            <h2>{choose("最近选择", "Recent choices")}</h2>
+            <ul>
+              {history.selections.slice(0, 6).map((selection) => (
+                <li key={selection.selection_id}>
+                  <strong>{selection.room_name}</strong>
+                  <span>{selection.selected_rank ? `#${selection.selected_rank}` : selection.source}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      ) : null}
+      {outbox.length ? (
+        <section className="account-section selection-outbox">
+          <div>
+            <h2>{choose("等待重试", "Waiting to retry")}</h2>
+            <p>{choose("网络恢复后可使用同一幂等 ID 重试。", "Retry with the same idempotency ID after connectivity returns.")}</p>
+          </div>
+          <div className="account-actions">
+            {outbox.map((item) => (
+              <button
+                key={item.selectionId}
+                type="button"
+                className="secondary-button"
+                disabled={busy}
+                onClick={() => void onRetrySelection(item)}
+              >
+                {choose("重试", "Retry")} {item.roomName}
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+      <section className="account-section">
+        <div><h2>{choose("当前会话", "Current session")}</h2><p>{user.username}</p></div>
         <button type="button" className="secondary-button" onClick={onSignOut}><LogOut size={18} />{choose("退出登录", "Sign out")}</button>
+      </section>
+      <section className="account-section danger-zone">
+        <div><h2>{choose("删除账户", "Delete account")}</h2><p>{choose("删除账户、会话、选择历史和派生偏好。", "Delete the account, sessions, choice history and learned preferences.")}</p></div>
+        <button type="button" className="secondary-button" disabled={busy} onClick={() => void onDeleteAccount()}>
+          {choose("永久删除", "Delete permanently")}
+        </button>
       </section>
     </section>
   );

@@ -4,10 +4,14 @@ import type {
   AuthSessionResponse,
   AuthenticatedRecommendationRequest,
   DashboardData,
+  DeleteResult,
   LiveSensorSnapshotResponse,
   MePreferenceResponse,
   MePreferenceUpdate,
   RecommendationRequest,
+  RoomSelectionAccepted,
+  RoomSelectionHistoryResponse,
+  RoomSelectionRequest,
   RoomStatus,
   UserResponse,
   WeatherInfo,
@@ -26,6 +30,8 @@ const WEATHER_CACHE_KEY = "pssa-weather-cache-v1";
 const WEATHER_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 type MockAccount = UserResponse & { passwordHash: string };
+type ApiUserResponse = Omit<UserResponse, "role"> & { role?: UserResponse["role"] };
+type ApiAuthSessionResponse = Omit<AuthSessionResponse, "user"> & { user: ApiUserResponse };
 
 export const isRealApi = API_MODE === "real";
 
@@ -71,7 +77,7 @@ export async function restoreSession(): Promise<UserResponse | null> {
     return mockAccounts().find((account) => account.user_id === userId) ?? null;
   }
   try {
-    return await getJson<UserResponse>("/api/v1/me");
+    return normalizeUser(await getJson<ApiUserResponse>("/api/v1/me"));
   } catch {
     rememberCsrf(null);
     return null;
@@ -84,7 +90,7 @@ export async function register(credentials: Omit<AuthCredentials, "schema_versio
     const accounts = mockAccounts();
     if (username === "admin") throw new Error("该用户名为管理员保留。");
     if (accounts.some((account) => account.username === username)) throw new Error("用户名已存在。");
-    if (credentials.password.length < 8) throw new Error("密码至少需要 8 个字符。");
+    if (credentials.password.length < 10) throw new Error("密码至少需要 10 个字符。");
     const account: MockAccount = {
       schema_version: "1.0",
       user_id: `mock-${Date.now()}`,
@@ -98,11 +104,12 @@ export async function register(credentials: Omit<AuthCredentials, "schema_versio
     saveMockPreference(account.user_id, defaultPreferenceResponse());
     return mockSession(account);
   }
-  const result = await postJson<AuthCredentials, AuthSessionResponse>(
+  const payload = await postJson<AuthCredentials, ApiAuthSessionResponse>(
     "/api/v1/auth/register",
     { schema_version: "1.0", ...credentials },
     { csrf: false },
   );
+  const result = normalizeSession(payload);
   rememberCsrf(result.csrf_token);
   return result;
 }
@@ -117,11 +124,12 @@ export async function login(credentials: Omit<AuthCredentials, "schema_version">
     window.localStorage.setItem(MOCK_SESSION_KEY, account.user_id);
     return mockSession(account);
   }
-  const result = await postJson<AuthCredentials, AuthSessionResponse>(
+  const payload = await postJson<AuthCredentials, ApiAuthSessionResponse>(
     "/api/v1/auth/login",
     { schema_version: "1.0", ...credentials },
     { csrf: false },
   );
+  const result = normalizeSession(payload);
   rememberCsrf(result.csrf_token);
   return result;
 }
@@ -133,6 +141,16 @@ export async function logout() {
   }
   await postJson<Record<string, never>, unknown>("/api/v1/auth/logout", {});
   rememberCsrf(null);
+}
+
+export async function deleteMe() {
+  if (!isRealApi) {
+    window.localStorage.removeItem(MOCK_SESSION_KEY);
+    return null;
+  }
+  const response = await deleteJson<DeleteResult>("/api/v1/me");
+  rememberCsrf(null);
+  return response;
 }
 
 export async function loadMyPreferences(user: UserResponse): Promise<MePreferenceResponse> {
@@ -168,6 +186,44 @@ export async function saveMyPreferences(
   return putJson<MePreferenceUpdate, MePreferenceResponse>("/api/v1/me/preferences", body);
 }
 
+export async function resetLearnedPreferences() {
+  if (!isRealApi) return null;
+  return postJson<Record<string, never>, MePreferenceResponse>(
+    "/api/v1/me/preferences/reset-learned",
+    {},
+  );
+}
+
+export async function recordRoomSelection(
+  roomId: string,
+  recommendationRequestId: string | null,
+  source: RoomSelectionRequest["source"],
+  selectionIdValue = createSelectionId(),
+) {
+  if (!isRealApi) return null;
+  const body: RoomSelectionRequest = {
+    schema_version: "1.0",
+    selection_id: selectionIdValue,
+    room_id: roomId,
+    recommendation_request_id: recommendationRequestId,
+    source,
+  };
+  return postJson<RoomSelectionRequest, RoomSelectionAccepted>(
+    "/api/v1/me/room-selections",
+    body,
+  );
+}
+
+export async function listRoomSelections(limit = 6) {
+  if (!isRealApi) return null;
+  return getJson<RoomSelectionHistoryResponse>(`/api/v1/me/room-selections?limit=${limit}`);
+}
+
+export async function deleteRoomSelections() {
+  if (!isRealApi) return null;
+  return deleteJson<DeleteResult>("/api/v1/me/room-selections");
+}
+
 export async function loadDashboardData(user: UserResponse, request: RecommendationRequest): Promise<DashboardData> {
   if (!isRealApi) {
     await delay(120);
@@ -189,9 +245,10 @@ export async function loadDashboardData(user: UserResponse, request: Recommendat
     study_mode: request.study_mode,
     candidate_room_ids: candidateRoomIds,
   };
-  const [recommendations, preferences] = await Promise.all([
-    postJson<AuthenticatedRecommendationRequest, DashboardData["recommendations"]>("/api/v1/me/recommendations", body, { csrf: false }),
+  const [recommendations, preferences, selectionHistory] = await Promise.all([
+    postJson<AuthenticatedRecommendationRequest, DashboardData["recommendations"]>("/api/v1/me/recommendations", body),
     loadMyPreferences(user),
+    listRoomSelections(6),
   ]);
   return {
     rooms: roomsResponse.rooms,
@@ -202,8 +259,18 @@ export async function loadDashboardData(user: UserResponse, request: Recommendat
     lastUpdated: new Date().toISOString(),
     user,
     preferences,
+    selectionHistory,
     authenticated: true,
   };
+}
+
+export async function loadRoomStatuses(): Promise<RoomStatus[]> {
+  if (!isRealApi) {
+    await delay(80);
+    return mockRooms;
+  }
+  const response = await getJson<{ rooms: RoomStatus[] }>("/api/v1/rooms/status");
+  return response.rooms;
 }
 
 export async function loadLiveSensorSnapshot(roomId: string): Promise<LiveSensorSnapshotResponse> {
@@ -323,6 +390,16 @@ async function putJson<Body, Result>(path: string, body: Body) {
   return parseResponse<Result>(response);
 }
 
+async function deleteJson<Result>(path: string) {
+  const token = csrfToken();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "DELETE",
+    credentials: "include",
+    headers: token ? { "X-CSRF-Token": token } : {},
+  });
+  return parseResponse<Result>(response);
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (response.ok) return response.json() as Promise<T>;
   let message = `请求失败 (${response.status})`;
@@ -344,9 +421,24 @@ function rememberCsrf(token: string | null) {
   else window.sessionStorage.removeItem(CSRF_STORAGE_KEY);
 }
 
+function normalizeUser(user: ApiUserResponse): UserResponse {
+  return { ...user, role: user.role ?? "student" };
+}
+
+function normalizeSession(session: ApiAuthSessionResponse): AuthSessionResponse {
+  return { ...session, user: normalizeUser(session.user) };
+}
+
 function cookieValue(name: string) {
   const match = document.cookie.split("; ").find((part) => part.startsWith(`${name}=`));
   return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
+}
+
+export function createSelectionId() {
+  if ("randomUUID" in crypto) return crypto.randomUUID();
+  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (char) =>
+    (Number(char) ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (Number(char) / 4)))).toString(16),
+  );
 }
 
 function mockAccounts(): MockAccount[] {

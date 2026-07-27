@@ -48,7 +48,8 @@ until room coordinates are available in the module 3 status response.
 
 ## Application structure
 
-- A required sign-in screen separates student and administrator accounts.
+- Real API mode requires a local pseudonymous student account. Mock mode also
+  exposes a clearly separated administrator-console demonstration.
 - The language icon switches the complete interface between Simplified Chinese
   and professional English, persists the selection locally and updates the
   document language for assistive technology.
@@ -71,10 +72,15 @@ until room coordinates are available in the module 3 status response.
   prediction and shows all four module 2 room-state classifications.
 - Numeric student preferences are persisted by the backend and immediately
   affect deterministic ranking.
+- Explicit “Choose this room” actions are recorded idempotently and can update a
+  learned preference profile. The Account page can disable learning, reset the
+  learned values, delete selection history, retry a failed selection with the
+  same ID, or delete the account.
 
 Mock mode includes `student / study1234` and `admin / admin1234` demo accounts.
-For real API mode, create student accounts from the interface and configure
-`ADMIN_USERNAME` and `ADMIN_PASSWORD` in the backend environment.
+For real API mode, create a student account from the interface. The backend does
+not implement an administrator role; the administrator console is mock-only and
+must not be treated as a production authorization boundary.
 
 ## Tests
 
@@ -92,7 +98,9 @@ npm run build
 
 The browser never receives LLM keys. Thermal previews are displayed only as
 short-lived 32 x 24 normalized values and are never sent to the LLM request
-builder. The UI does not collect names, student IDs or email addresses.
+builder. The UI does not collect names, student IDs or email addresses. It
+records only explicit room choices, and users can disable learning, erase their
+history, or delete their account.
 
 Classroom photographs and factual venue details are sourced from official NUS
 pages. See `public/rooms/README.md` for attribution and operational caveats.

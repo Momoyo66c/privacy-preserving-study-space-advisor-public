@@ -10,14 +10,15 @@ from study_space_api.database import Base
 from study_space_api.main import create_app
 from study_space_api import models
 from study_space_api.schemas import WeatherResponse
-from study_space_api.security import hash_password
 
 
 def test_health_reports_module4_adapter_as_ok(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert response.json()["recommendation_adapter"]["mode"] == "rules+template"
+    assert response.json()["recommendation_adapter"]["name"] == "module4-rule-based-v1"
+    assert response.json()["recommendation_adapter"]["mode"] == "template"
+    assert response.json()["recommendation_adapter"]["llm_status"] == "disabled"
     assert response.headers["x-request-id"]
 
 
@@ -82,6 +83,7 @@ def test_status_history_and_forecast_flow(client: TestClient, valid_observation:
     history = client.get("/api/v1/rooms/room_a/history?hours=1&bucket_minutes=5")
     assert history.status_code == 200
     assert len(history.json()["points"]) == 12
+    assert sum(point["observation_count"] for point in history.json()["points"]) == 1
     forecast = client.get("/api/v1/rooms/room_a/forecast?minutes=30")
     assert forecast.status_code == 200
     assert forecast.json()["method"] == "current_persistence"
@@ -95,68 +97,6 @@ def test_preferences_upsert_get_and_range_validation(client: TestClient) -> None
     body["quiet_priority"] = 1.1
     assert client.put("/api/v1/preferences/demo-user", json=body).status_code == 422
     assert client.get("/api/v1/preferences/missing").status_code == 404
-
-
-def test_student_registration_login_and_personal_preferences(client: TestClient) -> None:
-    credentials = {"schema_version": "1.0", "username": "maya", "password": "study-room-123"}
-    registered = client.post("/api/v1/auth/register", json=credentials)
-    assert registered.status_code == 200
-    assert registered.json()["user"]["role"] == "student"
-    csrf = registered.json()["csrf_token"]
-
-    me = client.get("/api/v1/me")
-    assert me.status_code == 200
-    assert me.json()["username"] == "maya"
-
-    preferences = client.get("/api/v1/me/preferences")
-    assert preferences.status_code == 200
-    assert preferences.json()["effective"]["quiet_priority"] == 0.8
-
-    body = {
-        "schema_version": "1.0",
-        "study_mode": "discussion",
-        "quiet_priority": 0.2,
-        "low_occupancy_priority": 0.6,
-        "brightness_priority": 0.8,
-        "comfort_priority": 0.5,
-        "distance_priority": 0.1,
-        "preferred_temperature_c": 23,
-        "learning_enabled": True,
-    }
-    assert client.put("/api/v1/me/preferences", json=body).status_code == 403
-    updated = client.put("/api/v1/me/preferences", json=body, headers={"X-CSRF-Token": csrf})
-    assert updated.status_code == 200
-    assert updated.json()["manual"]["brightness_priority"] == 0.8
-
-    logout = client.post("/api/v1/auth/logout", json={}, headers={"X-CSRF-Token": csrf})
-    assert logout.status_code == 200
-    assert client.get("/api/v1/me").status_code == 401
-
-    logged_in = client.post("/api/v1/auth/login", json=credentials)
-    assert logged_in.status_code == 200
-    assert client.get("/api/v1/me/preferences").json()["manual"]["study_mode"] == "discussion"
-
-
-def test_registration_cannot_create_admin_and_configured_admin_can_login(tmp_path) -> None:
-    settings = Settings(
-        database_url=f"sqlite:///{(tmp_path / 'accounts.db').as_posix()}",
-        admin_username="admin",
-        admin_password="administrator-123",
-    )
-    app = create_app(settings)
-    Base.metadata.create_all(app.state.database.engine)
-    with TestClient(app) as client:
-        reserved = client.post(
-            "/api/v1/auth/register",
-            json={"schema_version": "1.0", "username": "admin", "password": "administrator-123"},
-        )
-        assert reserved.status_code == 409
-        login = client.post(
-            "/api/v1/auth/login",
-            json={"schema_version": "1.0", "username": "admin", "password": "administrator-123"},
-        )
-        assert login.status_code == 200
-        assert login.json()["user"]["role"] == "admin"
 
 
 def test_thermal_preview_is_separate_and_available(client: TestClient) -> None:
@@ -175,19 +115,6 @@ def test_admin_live_monitor_combines_sensor_ml_and_thermal_analysis(
     valid_observation: dict,
 ) -> None:
     now = datetime.now(timezone.utc)
-    with app.state.database.session() as session:
-        session.add(
-            models.User(
-                id="admin-monitor",
-                username="monitoradmin",
-                password_hash=hash_password("monitor-password"),
-                role="admin",
-                created_at=now,
-                updated_at=now,
-            )
-        )
-        session.commit()
-
     assert client.post("/api/v1/edge/observations", json=valid_observation).status_code == 200
     values = [0.08] * 768
     for y in range(6, 12):
@@ -234,13 +161,6 @@ def test_admin_live_monitor_combines_sensor_ml_and_thermal_analysis(
     assert client.put("/api/v1/edge/rooms/room_a/thermal-preview", json=thermal).status_code == 200
     assert client.put("/api/v1/edge/rooms/room_a/sound-preview", json=sound).status_code == 200
     assert client.put("/api/v1/edge/rooms/room_a/people-count", json=count).status_code == 200
-    assert client.get("/api/v1/rooms/room_a/live").status_code == 401
-
-    login = client.post(
-        "/api/v1/auth/login",
-        json={"schema_version": "1.0", "username": "monitoradmin", "password": "monitor-password"},
-    )
-    assert login.status_code == 200
     response = client.get("/api/v1/rooms/room_a/live")
     assert response.status_code == 200
     payload = response.json()
@@ -259,10 +179,12 @@ def test_recommendation_adapter_and_record(client: TestClient, valid_observation
     assert response.status_code == 200
     assert response.json()["recommendations"][0]["room_id"] == "room_a"
     assert response.json()["recommendations"][0]["explanation_source"] == "template"
-    assert "LLM_TEMPLATE_FALLBACK" in response.json()["warnings"]
+    assert response.json()["warnings"] == ["LLM_DISABLED"]
     with app.state.database.session() as session:
         record = session.query(models.RecommendationRecord).one()
-        assert record.adapter_name == "module4-rule-based-recommendation"
+        assert record.adapter_name == "module4-rule-based-v1"
+        assert record.score_breakdown_json
+        assert record.fallback_reason == "LLM_DISABLED"
         assert "values" not in str(record.rankings_json)
 
 

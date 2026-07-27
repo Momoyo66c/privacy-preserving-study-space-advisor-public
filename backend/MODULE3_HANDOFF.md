@@ -16,7 +16,13 @@ Module 2 posts the `shared/contracts/edge_observation.schema.json` payload to `/
 
 Thermal preview uses its separate edge endpoint. It is fixed at 32 x 24 normalized values, held in one process for at most 30 seconds, and never reaches SQLAlchemy, backups, history, recommendations, or ordinary logs.
 
-The dashboard can fetch `GET /api/v1/rooms/{room_id}/live` to receive the latest `RoomStatus`, ephemeral thermal preview, and current sound RMS in one read. It can poll `GET /api/v1/rooms/{room_id}/sound-preview` independently for lower-latency sound display. These endpoints are additive projections only: module 2 continues writing through the existing observation contract, and the Pi bridge writes previews through their dedicated edge endpoints.
+The dashboard can fetch `GET /api/v1/rooms/{room_id}/live` to receive the latest
+`RoomStatus`, ephemeral thermal preview, sound RMS, module 2 people-count result,
+and privacy-safe connected thermal-region boxes in one read. It can poll
+`GET /api/v1/rooms/{room_id}/sound-preview` independently for lower-latency
+sound display. These endpoints are additive projections only: module 2
+continues writing through the existing observation contract, and the Pi bridge
+writes previews through their dedicated edge endpoints.
 
 Module 4 implements the asynchronous `RecommendationAdapter` protocol in
 `study_space_api.recommendation`. The default is now
@@ -58,6 +64,9 @@ The current synthetic backtest favors persistence over recent averaging. See `PE
 - Logs and recommendation records contain IDs and summaries only.
 - Configure `EDGE_API_TOKEN` before accepting writes beyond localhost.
 - This prototype has local user authentication but no password recovery, school SSO, administrator console, or multi-tenant role model.
+- The quantitative live read is not role-protected in this prototype. The
+  frontend administrator view is a mock-mode demonstration; keep telemetry on a
+  trusted network until a production authorization model exists.
 
 ## Known limitations
 
@@ -66,7 +75,8 @@ The current synthetic backtest favors persistence over recent averaging. See `PE
 - Synthetic history is for demonstrations and does not validate forecast accuracy.
 - Repository-level CI now includes dedicated Python 3.11 test/migration and Docker health-check jobs; `CI_HANDOFF.md` documents the required branch-protection checks.
 - Docker Desktop 4.82.0 / Engine 29.6.1 was smoke-tested locally on 2026-07-16: the Python 3.11 image built, migrations completed, the single Uvicorn worker became healthy, and the temporary container was removed.
-- The authentication increment passed all 61 tests on Python 3.11.6. Docker smoke was rerun successfully on 2026-07-22 with Engine 29.6.1: the Python 3.11 image built, Alembic upgraded through `0002`, `/health` returned 200 with `database=ok`, and the temporary container was removed.
+- The integrated account, selection-learning, Gate C, weather and live-preview
+  suite currently contains 141 backend tests.
 - Module 2 must continue to mark missing/unhealthy features accurately so the
   rule adapter can omit and renormalize those dimensions.
 - Module 4 now owns the formal ranking and template/Ollama explanation package

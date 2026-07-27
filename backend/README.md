@@ -34,23 +34,35 @@ To receive Pi traffic on a trusted LAN, explicitly bind `0.0.0.0` and configure 
 - `EDGE_API_TOKEN`: optional; an empty value disables edge write authentication.
 - `CORS_ORIGINS`: JSON list of allowed frontend origins, for example `["http://localhost:5173"]`.
 - `MAX_REQUEST_BODY_BYTES`: default 128 KiB.
-- `ADMIN_USERNAME` and `ADMIN_PASSWORD`: optional demo administrator credentials. Leave
-  `ADMIN_PASSWORD` empty to disable administrator login.
-- `SESSION_TTL_HOURS`: signed-in session lifetime; defaults to 24 hours.
-- Retention defaults: observations/forecasts 30 days, recommendation records 7 days.
+- `SESSION_TTL_SECONDS`: signed-in session lifetime; defaults to 8 hours.
+- `ALLOW_ANONYMOUS_DEMO`: keeps the legacy anonymous profile/recommendation
+  endpoints available in development; production forces it off.
+- `RECOMMENDATION_ADAPTER_MODE`: `rule` by default; `stub` is an explicit
+  integration/emergency mode.
+- `LLM_ENABLED`: when enabled, uses the configured local Ollama provider only
+  to explain an already-computed ranking.
+- Retention defaults: observations/forecasts 30 days, recommendation records
+  7 days, and explicit room-selection events 90 days.
 
 Never put real secrets in `.env.example`, logs, frontend variables, fixtures, or recommendation records.
 
 ## Student accounts and preferences
 
-`POST /api/v1/auth/register` creates a student account. Passwords are stored as
-salted PBKDF2 hashes, never as plaintext. Session tokens are held in HTTP-only
-cookies and write requests require a matching CSRF token.
+`POST /api/v1/auth/register` creates a pseudonymous student account. Passwords
+use Argon2id, never plaintext. A random session token is held in an HttpOnly,
+SameSite=Lax cookie while only its SHA-256 hash is stored; authenticated write
+requests require the matching session-bound CSRF token.
 
-Each account receives a numeric preference row in `user_preferences`. The
+Each account owns a manual preference profile and a separate learned profile. The
 student dashboard reads and updates it through `GET/PUT /api/v1/me/preferences`
 and requests personalized ranking from `POST /api/v1/me/recommendations`.
-Registration cannot create an administrator role.
+Only an explicit “Choose this room” action creates an idempotent selection event.
+Learning can be disabled or reset, selection history can be deleted, and deleting
+the account removes its sessions, selections, and learned preferences.
+
+The backend deliberately has no administrator account or role model. The
+frontend's administrator console is a mock-mode demonstration, not a production
+authorization boundary.
 
 ## Campus weather
 
@@ -59,10 +71,10 @@ relative humidity, wind speed and two-hour forecast feeds. It selects the
 available station nearest NUS, converts wind speed to km/h, derives a feels-like
 temperature and caches the latest valid response for short upstream outages.
 
-## Live administrator monitoring
+## Live privacy-safe monitoring
 
-The administrator-only `GET /api/v1/rooms/{room_id}/live` endpoint combines the
-latest room observation with three short-lived edge feeds:
+`GET /api/v1/rooms/{room_id}/live` combines the latest room observation with
+three short-lived edge feeds:
 
 - `PUT /api/v1/edge/rooms/{room_id}/thermal-preview`
 - `PUT /api/v1/edge/rooms/{room_id}/sound-preview`
@@ -74,6 +86,10 @@ the `people_count_prediction.v1` payload produced by the module 2 random-forest
 pipeline. The live response also includes privacy-safe connected thermal-region
 boxes. These boxes identify hot regions in the 32 x 24 array; they are not
 camera-based identity or face detections.
+
+The prototype read endpoint is not role-protected; deploy it only on the trusted
+demonstration network. Production deployment requires a real authorization
+model before exposing quantitative telemetry.
 
 ## Maintenance and evaluation
 

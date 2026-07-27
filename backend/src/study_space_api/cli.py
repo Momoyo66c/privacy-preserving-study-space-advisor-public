@@ -90,7 +90,14 @@ def main() -> None:
             result = _seed(session, args.reset)
         elif args.command == "cleanup":
             now = datetime.now(timezone.utc)
-            result = cleanup_expired(session, now - timedelta(days=settings.observation_retention_days), now - timedelta(days=settings.forecast_retention_days), now - timedelta(days=settings.recommendation_retention_days))
+            result = cleanup_expired(
+                session,
+                now - timedelta(days=settings.observation_retention_days),
+                now - timedelta(days=settings.forecast_retention_days),
+                now - timedelta(days=settings.recommendation_retention_days),
+                now - timedelta(days=settings.selection_retention_days),
+                now,
+            )
             session.commit()
         else:
             result = run_backtest(session)

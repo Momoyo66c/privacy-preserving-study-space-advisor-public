@@ -829,6 +829,23 @@ p {
   color: #c6d7ff;
 }
 
+.recommendation-actions,
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.recommendation-actions {
+  justify-content: space-between;
+  margin-top: auto;
+}
+
+.recommendation-actions .card-link {
+  margin-top: 0;
+}
+
 /* Shared page titles and empty states */
 
 .page-title {
@@ -1291,6 +1308,48 @@ p {
 .privacy-account > svg {
   flex: 0 0 auto;
   color: var(--green);
+}
+
+.learning-toggle {
+  display: inline-flex;
+  gap: 9px;
+  align-items: center;
+  margin-top: 14px;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+}
+
+.learning-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--blue);
+}
+
+.selection-history ul {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.selection-history li {
+  display: flex;
+  min-width: 220px;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--line-soft);
+  padding-bottom: 8px;
+  color: var(--text-soft);
+}
+
+.selection-history li span {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.danger-zone {
+  border-bottom-color: #5f3038;
 }
 
 /* Image-led classroom directory */

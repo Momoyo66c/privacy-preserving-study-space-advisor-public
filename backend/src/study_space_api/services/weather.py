@@ -44,12 +44,12 @@ class WeatherService:
 
     async def get_current(self) -> WeatherResponse:
         age = time.monotonic() - self._cached_at
-        if self._cached is not None and age <= self.cache_ttl_seconds:
+        if self._cached is not None and age < self.cache_ttl_seconds:
             return self._cached
 
         async with self._lock:
             age = time.monotonic() - self._cached_at
-            if self._cached is not None and age <= self.cache_ttl_seconds:
+            if self._cached is not None and age < self.cache_ttl_seconds:
                 return self._cached
             try:
                 temperature, humidity, wind, forecast = await asyncio.gather(
