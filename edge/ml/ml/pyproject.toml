@@ -25,7 +25,6 @@ study-space-ml-count-inspect = "study_space_ml.scripts.inspect_dataset:main"
 study-space-ml-count-features = "study_space_ml.scripts.extract_features:main"
 study-space-ml-count-train = "study_space_ml.scripts.train_people_count:main"
 study-space-ml-count-predict = "study_space_ml.scripts.predict_people_count:main"
-study-space-ml-count-leave-one-session = "study_space_ml.scripts.leave_one_session_eval:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

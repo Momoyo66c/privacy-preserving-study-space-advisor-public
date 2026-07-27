@@ -1,0 +1,16 @@
+# Local datasets and generated outputs
+data/real_classroom_v1/
+data/sessions/
+data/labels.csv
+outputs/
+*.log
+.DS_Store
+
+# Local environments
+.venv/
+__pycache__/
+.pytest_cache/
+
+# Keep committed baseline artifacts, but ignore ad-hoc custom artifacts by default.
+artifacts/*custom*/
+artifacts/*local*/

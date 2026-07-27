@@ -33,7 +33,7 @@ data/real_classroom_v1/
 From the project root:
 
 ```bash
-cd ml
+cd edge/ml
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[dev]'
@@ -42,7 +42,7 @@ python -m pip install -e '.[dev]'
 Windows PowerShell:
 
 ```powershell
-cd ml
+cd edge/ml
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
@@ -60,8 +60,8 @@ python -m pytest
 study-space-ml-count-inspect data/real_classroom_v1
 ```
 ```
-cd D:\college\nus_AIoT\v07\ml
-study-space-ml-count-features data/real_classroom_v1 --labels data/real_classroom_v1/labels.csv --out outputs/features_with_labels.csv
+cd D:\college\nus_AIoT\v05
+& "python" ./edge/ml/scripts/inspect_dataset.py ./edge/ml/data/real_classroom_v1
 ```
 
 or without installing entry points:
@@ -73,9 +73,12 @@ python scripts/inspect_dataset.py data/real_classroom_v1
 ## Extract features
 
 ```powershell
-study-space-ml-count-features data/real_classroom_v1 --labels data/real_classroom_v1/labels.csv --out outputs/features_with_labels.csv
+study-space-ml-count-features data/real_classroom_v1 \
+  --labels data/real_classroom_v1/labels.csv \
+  --out outputs/features_with_labels.csv
 ```
-study-space-ml-count-train data/real_classroom_v1 --labels data/real_classroom_v1/labels.csv --out-dir artifacts/people_count_rf_custom
+cd D:\college\nus_AIoT\v05
+& "python" ./edge/ml/scripts/extract_features.py ./edge/ml/data/real_classroom_v1 --labels ./edge/ml/data/real_classroom_v1/labels.csv --out ./edge/ml/outputs/features_with_labels.csv
 
 ## Train the people-count model
 
@@ -84,7 +87,8 @@ study-space-ml-count-train data/real_classroom_v1 \
   --labels data/real_classroom_v1/labels.csv \
   --out-dir artifacts/people_count_rf_custom
 ```
-study-space-ml-count-train data/real_classroom_v1 --labels data/real_classroom_v1/labels.csv --out-dir artifacts/people_count_rf_custom
+cd D:\college\nus_AIoT\v05
+& "python" ./edge/ml/scripts/train_people_count.py ./edge/ml/data/real_classroom_v1 --labels ./edge/ml/data/real_classroom_v1/labels.csv --out-dir ./edge/ml/artifacts/people_count_rf_custom
 
 The artifact folder will contain:
 
@@ -103,17 +107,8 @@ study-space-ml-count-predict data/real_classroom_v1/session-20260723T103741176Z-
   --artifact artifacts/people_count_rf_custom \
   --out outputs/predictions.jsonl
 ```
-# 先确保输出目录存在
-New-Item -ItemType Directory -Path outputs -Force
-
-# 遍历所有 session 文件夹，逐个执行预测
-Get-ChildItem data\real_classroom_v1 -Directory -Filter session-* | ForEach-Object {
-    $sessionName = $_.Name
-    Write-Host "正在预测会话: $sessionName"
-    study-space-ml-count-predict "data/real_classroom_v1/$sessionName" `
-      --artifact artifacts/people_count_rf_custom `
-      --out "outputs/predictions_$sessionName.jsonl"
-}
+cd D:\college\nus_AIoT\v05
+& "python" ./edge/ml/scripts/predict_people_count.py ./edge/ml/data/real_classroom_v1/session-20260723T103741176Z-ffae7d8c --artifact ./edge/ml/artifacts/people_count_rf_custom --out ./edge/ml/outputs/predictions.jsonl
 
 ## Predict a single window JSON or windows.jsonl
 

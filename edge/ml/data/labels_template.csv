@@ -1,2 +1,4 @@
-session_id,window_id,label,annotator,notes
-session-example,room_a-20260716T063005.000Z,quiet_study_recommended,manual,example only
+session_id,window_id,people_count,label,annotator,notes
+session-xxx,room_a-20260723T100000.000Z,0,empty_or_low_activity,manual,
+session-xxx,room_a-20260723T100005.000Z,1,quiet_study_recommended,manual,
+session-xxx,room_a-20260723T100010.000Z,2,discussion_allowed,manual,
