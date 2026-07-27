@@ -13,13 +13,14 @@
       "confidence": 0.88,
       "is_stale": false,
       "reasons": [
-        "Stub ranking uses current suitability only"
+        "Current conditions suit quiet study.",
+        "Current occupancy is low."
       ],
-      "explanation": "Stub recommendation; module 4 will provide final ranking.",
-      "explanation_source": "stub"
+      "explanation": "Current conditions suit quiet study. Current occupancy is low.",
+      "explanation_source": "template"
     }
   ],
   "warnings": [
-    "RECOMMENDATION_STUB_ACTIVE"
+    "LLM_DISABLED"
   ]
 }

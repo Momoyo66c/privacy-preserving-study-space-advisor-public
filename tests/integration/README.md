@@ -33,3 +33,16 @@ npm run gate-a:e2e
 ```
 
 测试后端使用临时 SQLite 数据库、三个虚构房间和 Module 1 当次生成的模拟窗口，不写入项目数据库，不需要 LLM Key，也不会发送完整热帧、声音波形或雷达轨迹。
+
+## Gate C：正式推荐与降级
+
+Gate C 的仓库级集成测试固定验证三个房间的 quiet/discussion 排名、LLM
+成功与断线时确定性字段不变，以及单个环境传感器离线不会阻断推荐：
+
+```bash
+python -m pytest -q tests/integration/test_gate_c.py
+```
+
+测试使用内存中的 fake explanation provider，不要求 CI 安装 Ollama。真实
+Windows Ollama 的 E 盘配置和性能结果见
+[`../../docs/GATE_C_LOCAL_LLM.md`](../../docs/GATE_C_LOCAL_LLM.md)。

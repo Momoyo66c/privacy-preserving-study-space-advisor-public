@@ -267,6 +267,20 @@ BACKEND_BASE_URL=http://<developer-machine-ip>:8000
 - LLM 关闭时模板解释仍工作。
 - 单传感器故障显示 degraded，不使系统崩溃。
 
+Windows 本地演示使用 E 盘 Ollama 模型和解释专用 provider：
+
+```powershell
+cd backend
+python scripts\benchmark_llm.py --model qwen3:1.7b --runs 10 --timeout 2
+uvicorn study_space_api.main:app --host 127.0.0.1 --port 8000
+```
+
+先在 LLM 开启时记录三房间的 rank、score 和 reasons，再关闭 Ollama并
+重复请求。验收要求这些确定性字段完全不变，只有
+`explanation_source` 从 `llm` 变为 `template` 并出现可诊断 warning。
+完整的模型存储、预热、GPU 检查、隐私边界和故障演示步骤见
+[`GATE_C_LOCAL_LLM.md`](GATE_C_LOCAL_LLM.md)。
+
 ### Gate D：最终演示
 
 - 连续运行 15 分钟。

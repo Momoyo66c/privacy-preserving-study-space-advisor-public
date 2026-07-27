@@ -13,9 +13,11 @@ describe("App", () => {
     expect((await screen.findAllByText("Quiet Commons")).length).toBeGreaterThan(0);
     expect(screen.getByText("No RGB camera.")).toBeInTheDocument();
     expect(screen.getByText("Best")).toBeInTheDocument();
+    expect(screen.getByText("Template explanation")).toBeInTheDocument();
     expect(screen.getByText("Sound RMS (current)")).toBeInTheDocument();
     expect(screen.getByText("Relative light")).toBeInTheDocument();
     expect(screen.getByText("not_configured")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open full thermal monitor" })).toHaveAttribute("href", "/thermal?room=room_a&mode=mock");
     expect(screen.queryByText(/LLM_TEMPLATE_FALLBACK/)).not.toBeInTheDocument();
   });
 

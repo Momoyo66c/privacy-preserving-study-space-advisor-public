@@ -52,9 +52,20 @@ DELETE /api/v1/me/room-selections
 
 Only an explicit “choose this room” action creates a selection event. The client reuses the same UUID when retrying. Manual preferences retain at least 60% influence; learned history reaches at most 40% after 20 valid evidence events. Learning can be disabled or reset. Deleting all history also clears learned values, and deleting the account cascades to sessions, history, and learned preferences.
 
-Module 3 keeps the deterministic stub as its default adapter. It now accepts authenticated, server-owned effective preferences and an optional score-breakdown result so module 4 can plug in the formal ranking and provide learning evidence. Module 3 does not implement the final ranking algorithm.
+Module 4's deterministic rule adapter is now the default implementation of the
+existing Module 3 adapter protocol. It accepts authenticated, server-owned
+effective preferences and returns bounded score breakdowns for selection
+learning. The old stub remains only as an explicit configuration or whole
+adapter failure fallback.
 
-The default stub deliberately returns no score breakdown, so selections are recorded but do not change learned preferences until Module 4 injects its adapter. At the persistence boundary, Module 3 removes unknown rooms, free text and unknown keys; it accepts only bounded component scores (`mode_match`, `quietness`, `current_occupancy`, `future_availability`, `brightness`, `comfort`, `distance`), matching weights, final/base scores and quality factors. This prevents raw sensor or prompt data from entering audit storage.
+The optional Ollama provider rewrites approved reasons after ranking is
+complete. It cannot change rank, score, reasons or score breakdown. A disabled,
+unavailable, timed-out or invalid LLM response uses the entire template batch.
+At the persistence boundary, Module 3 removes unknown rooms, free text and
+unknown keys; it accepts only bounded component scores (`mode_match`,
+`quietness`, `current_occupancy`, `future_availability`, `brightness`,
+`comfort`, `distance`), matching weights, final/base scores and quality factors.
+Prompts and complete model responses are never persisted.
 
 ## Important configuration
 
@@ -65,6 +76,14 @@ The default stub deliberately returns no score breakdown, so selections are reco
 - `SESSION_TTL_SECONDS`: browser session lifetime, default 8 hours.
 - `SESSION_COOKIE_SECURE`: forced to true when `APP_ENV=production`.
 - `ALLOW_ANONYMOUS_DEMO`: keeps legacy profile/recommendation endpoints available in development; forced off in production.
+- `RECOMMENDATION_ADAPTER_MODE`: `rule` by default; use `stub` only for an
+  explicit integration fallback.
+- `LLM_ENABLED`: false by default so ranking and template explanations require
+  no model server.
+- `LLM_BASE_URL`, `LLM_MODEL`, `LLM_TIMEOUT_SECONDS`,
+  `LLM_CONTEXT_TOKENS`, `LLM_MAX_OUTPUT_TOKENS` and `LLM_KEEP_ALIVE`: local
+  explanation provider settings. The verified Windows model is
+  `qwen3:1.7b` at `http://127.0.0.1:11434`.
 - `MAX_REQUEST_BODY_BYTES`: default 128 KiB.
 - Retention defaults: observations/forecasts 30 days, recommendation records 7 days, selection events 90 days.
 
@@ -86,6 +105,15 @@ For a real single-worker HTTP smoke test and P95 benchmark:
 ```powershell
 python scripts/benchmark_http.py
 ```
+
+For the prewarmed local explanation benchmark:
+
+```powershell
+python scripts/benchmark_llm.py --model qwen3:1.7b --runs 10 --timeout 2
+```
+
+See [`../docs/GATE_C_LOCAL_LLM.md`](../docs/GATE_C_LOCAL_LLM.md) for E-drive
+Ollama setup, prewarming, GPU checks and the measured 4B-to-1.7B fallback.
 
 After installing Docker Desktop, build, start, health-check and remove a temporary container with:
 
