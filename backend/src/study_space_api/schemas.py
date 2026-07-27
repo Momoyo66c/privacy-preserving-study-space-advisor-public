@@ -4,7 +4,6 @@ import math
 from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Annotated, Literal
-from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -56,8 +55,6 @@ class FeatureSummary(StrictModel):
     thermal_hot_region_count: int | None = Field(default=None, ge=0)
     radar_active_target_count: int | None = Field(default=None, ge=0)
     sound_rms_mean: FiniteFloat | None = Field(default=None, ge=0, le=1)
-    sound_peak_max: FiniteFloat | None = Field(default=None, ge=0, le=1)
-    light_relative_mean: FiniteFloat | None = Field(default=None, ge=0, le=1)
     light_lux: FiniteFloat | None = Field(default=None, ge=0)
     temperature_c: FiniteFloat | None = Field(default=None, ge=-50, le=100)
     humidity_pct: FiniteFloat | None = Field(default=None, ge=0, le=100)
@@ -164,6 +161,59 @@ class SoundPreviewResponse(StrictModel):
     unavailable_reason: str | None = None
 
 
+class PeopleCountPrediction(StrictModel):
+    schema_version: Literal["people_count_prediction.v1"]
+    prediction_id: StableId
+    window_id: StableId | None = None
+    room_id: StableId
+    device_id: StableId | None = None
+    observed_at: datetime
+    predicted_people_count: FiniteFloat = Field(ge=0, le=100)
+    predicted_people_count_rounded: int = Field(ge=0, le=100)
+    occupancy_level: OccupancyLevel
+    confidence: FiniteFloat = Field(ge=0, le=1)
+    model: ModelInfo
+    warnings: list[str] = Field(default_factory=list, max_length=32)
+    features: dict[str, FiniteFloat] | None = None
+
+    _normalize_observed_at = field_validator("observed_at")(utc_datetime)
+
+
+class PeopleCountPreviewResponse(StrictModel):
+    schema_version: Literal["people_count_prediction.v1"] = "people_count_prediction.v1"
+    room_id: StableId
+    available: bool
+    observed_at: datetime | None = None
+    predicted_people_count: float | None = Field(default=None, ge=0, le=100)
+    predicted_people_count_rounded: int | None = Field(default=None, ge=0, le=100)
+    occupancy_level: OccupancyLevel | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    model: ModelInfo | None = None
+    warnings: list[str] = Field(default_factory=list)
+    expires_at: datetime | None = None
+    unavailable_reason: str | None = None
+
+
+class ThermalDetectionBox(StrictModel):
+    x: FiniteFloat = Field(ge=0, le=1)
+    y: FiniteFloat = Field(ge=0, le=1)
+    width: FiniteFloat = Field(gt=0, le=1)
+    height: FiniteFloat = Field(gt=0, le=1)
+    confidence: FiniteFloat = Field(ge=0, le=1)
+    peak_intensity: FiniteFloat = Field(ge=0, le=1)
+
+
+class ThermalAnalysisResponse(StrictModel):
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    available: bool
+    method: Literal["thermal_connected_regions"]
+    threshold: float | None = Field(default=None, ge=0, le=1)
+    detected_region_count: int = Field(default=0, ge=0)
+    estimated_people_count: int | None = Field(default=None, ge=0)
+    count_source: Literal["people_count_model", "thermal_regions", "room_observation", "unavailable"]
+    boxes: list[ThermalDetectionBox] = Field(default_factory=list)
+
+
 class RoomMetadata(StrictModel):
     schema_version: Literal["1.0"] = SCHEMA_VERSION
     id: StableId
@@ -222,13 +272,13 @@ class RoomStatusesResponse(StrictModel):
 
 
 class LiveSensorSnapshotResponse(StrictModel):
-    """Dashboard-friendly projection of the latest anonymous sensor state."""
-
     schema_version: Literal["1.0"] = SCHEMA_VERSION
     generated_at: datetime
     room: RoomStatus
     thermal_preview: ThermalPreviewResponse
     sound_preview: SoundPreviewResponse
+    people_count: PeopleCountPreviewResponse
+    thermal_analysis: ThermalAnalysisResponse
 
 
 class RoomDetailResponse(RoomStatus):
@@ -281,6 +331,67 @@ class PreferenceProfileResponse(PreferenceBody):
     updated_at: datetime
 
 
+class AuthCredentials(StrictModel):
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    username: str = Field(min_length=3, max_length=32, pattern=r"^[A-Za-z0-9._-]+$")
+    password: str = Field(min_length=8, max_length=128)
+
+
+class UserResponse(StrictModel):
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    user_id: str
+    username: str
+    role: Literal["student", "admin"]
+    created_at: datetime
+
+
+class AuthSessionResponse(StrictModel):
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    user: UserResponse
+    csrf_token: str
+    expires_at: datetime
+
+
+class PreferenceSnapshot(StrictModel):
+    study_mode: StudyMode
+    quiet_priority: FiniteFloat = Field(ge=0, le=1)
+    low_occupancy_priority: FiniteFloat = Field(ge=0, le=1)
+    brightness_priority: FiniteFloat = Field(ge=0, le=1)
+    comfort_priority: FiniteFloat = Field(ge=0, le=1)
+    distance_priority: FiniteFloat = Field(ge=0, le=1)
+    preferred_temperature_c: FiniteFloat | None = Field(default=None, ge=10, le=35)
+
+
+class MePreferenceUpdate(PreferenceBody):
+    learning_enabled: bool = True
+
+
+class LearnedPreferenceValues(StrictModel):
+    quiet_priority: float | None = None
+    low_occupancy_priority: float | None = None
+    brightness_priority: float | None = None
+    comfort_priority: float | None = None
+    distance_priority: float | None = None
+
+
+class PreferenceEvidenceCounts(StrictModel):
+    quiet_priority: int = 0
+    low_occupancy_priority: int = 0
+    brightness_priority: int = 0
+    comfort_priority: int = 0
+    distance_priority: int = 0
+
+
+class MePreferenceResponse(StrictModel):
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    manual: PreferenceSnapshot
+    learned: LearnedPreferenceValues
+    effective: PreferenceSnapshot
+    evidence_counts: PreferenceEvidenceCounts
+    learning_enabled: bool
+    updated_at: datetime
+
+
 class RecommendationPreferences(StrictModel):
     quiet_priority: FiniteFloat = Field(ge=0, le=1)
     low_occupancy_priority: FiniteFloat = Field(ge=0, le=1)
@@ -305,7 +416,7 @@ class RecommendationRequest(StrictModel):
 
 
 class AuthenticatedRecommendationRequest(StrictModel):
-    schema_version: Literal["1.0"]
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
     study_mode: StudyMode
     candidate_room_ids: list[StableId] = Field(min_length=1, max_length=50)
 
@@ -349,117 +460,16 @@ class HealthResponse(StrictModel):
     version: str
 
 
-Username = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9._-]{2,31}$")]
-
-
-class AuthCredentials(StrictModel):
-    schema_version: Literal["1.0"]
-    username: Username
-    password: str = Field(min_length=10, max_length=128)
-
-    @field_validator("username", mode="before")
-    @classmethod
-    def normalize_username(cls, value: object) -> object:
-        return value.strip().lower() if isinstance(value, str) else value
-
-
-class UserResponse(StrictModel):
+class WeatherResponse(StrictModel):
     schema_version: Literal["1.0"] = SCHEMA_VERSION
-    user_id: str
-    username: str
-    created_at: datetime
-
-
-class AuthSessionResponse(StrictModel):
-    schema_version: Literal["1.0"] = SCHEMA_VERSION
-    user: UserResponse
-    csrf_token: str
-    expires_at: datetime
-
-
-class PreferenceSnapshot(StrictModel):
-    study_mode: StudyMode
-    quiet_priority: FiniteFloat = Field(ge=0, le=1)
-    low_occupancy_priority: FiniteFloat = Field(ge=0, le=1)
-    brightness_priority: FiniteFloat = Field(ge=0, le=1)
-    comfort_priority: FiniteFloat = Field(ge=0, le=1)
-    distance_priority: FiniteFloat = Field(ge=0, le=1)
-    preferred_temperature_c: FiniteFloat | None = Field(default=None, ge=10, le=35)
-
-
-class LearnedPreferenceValues(StrictModel):
-    quiet_priority: FiniteFloat | None = Field(default=None, ge=0, le=1)
-    low_occupancy_priority: FiniteFloat | None = Field(default=None, ge=0, le=1)
-    brightness_priority: FiniteFloat | None = Field(default=None, ge=0, le=1)
-    comfort_priority: FiniteFloat | None = Field(default=None, ge=0, le=1)
-    distance_priority: None = None
-
-
-class PreferenceEvidenceCounts(StrictModel):
-    quiet_priority: int = Field(ge=0)
-    low_occupancy_priority: int = Field(ge=0)
-    brightness_priority: int = Field(ge=0)
-    comfort_priority: int = Field(ge=0)
-    distance_priority: Literal[0] = 0
-
-
-class MePreferenceUpdate(PreferenceSnapshot):
-    schema_version: Literal["1.0"] = SCHEMA_VERSION
-    learning_enabled: bool = True
-
-
-class MePreferenceResponse(StrictModel):
-    schema_version: Literal["1.0"] = SCHEMA_VERSION
-    manual: PreferenceSnapshot
-    learned: LearnedPreferenceValues
-    effective: PreferenceSnapshot
-    evidence_counts: PreferenceEvidenceCounts
-    learning_enabled: bool
-    updated_at: datetime
-
-
-class RoomSelectionRequest(StrictModel):
-    schema_version: Literal["1.0"]
-    selection_id: UUID
-    room_id: StableId
-    recommendation_request_id: str | None = Field(default=None, min_length=1, max_length=128)
-    source: Literal["recommendation", "room_detail"]
-
-    @model_validator(mode="after")
-    def recommendation_source_requires_request(self) -> "RoomSelectionRequest":
-        if self.source == "recommendation" and self.recommendation_request_id is None:
-            raise ValueError("recommendation_request_id is required for recommendation selections")
-        return self
-
-
-class RoomSelectionAccepted(StrictModel):
-    schema_version: Literal["1.0"] = SCHEMA_VERSION
-    accepted: Literal[True] = True
-    selection_id: UUID
-    room_id: StableId
-    recorded_at: datetime
-    effective_preferences: PreferenceSnapshot
-
-
-class RoomSelectionHistoryItem(StrictModel):
-    selection_id: UUID
-    room_id: StableId
-    room_name: str
-    source: Literal["recommendation", "room_detail"]
-    recommendation_request_id: str | None
-    recorded_at: datetime
-    selected_rank: int | None
-    selected_score: int | None
-    evidence: dict[str, float]
-
-
-class RoomSelectionHistoryResponse(StrictModel):
-    schema_version: Literal["1.0"] = SCHEMA_VERSION
-    selections: list[RoomSelectionHistoryItem]
-    next_cursor: str | None
-
-
-class DeleteResult(StrictModel):
-    schema_version: Literal["1.0"] = SCHEMA_VERSION
-    deleted: bool = True
-    deleted_count: int = Field(default=0, ge=0)
+    source: Literal["nea", "nea_cache"]
+    is_cached: bool = False
+    station_name: str
+    location_label: str
+    observed_at: datetime
+    temperature_c: FiniteFloat
+    apparent_temperature_c: FiniteFloat
+    humidity_percent: FiniteFloat = Field(ge=0, le=100)
+    wind_kph: FiniteFloat = Field(ge=0)
+    weather_code: int = Field(ge=0, le=99)
+    condition: str

@@ -6,6 +6,8 @@ import hmac
 import json
 import logging
 import time
+import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Iterator
 
@@ -21,15 +23,26 @@ from .config import Settings
 from .errors import APIError, request_id_for
 from .repositories import DeviceRepository, ObservationRepository, PreferenceRepository, RecommendationRepository, RoomRepository
 from .schemas import (
+    AuthCredentials,
+    AuthenticatedRecommendationRequest,
+    AuthSessionResponse,
     EdgeObservation,
     FeatureSummary,
     ForecastResult,
     HealthResponse,
+    LearnedPreferenceValues,
     LiveSensorSnapshotResponse,
+    MePreferenceResponse,
+    MePreferenceUpdate,
     ObservationAccepted,
     OccupancyLevel,
+    PeopleCountPrediction,
+    PeopleCountPreviewResponse,
     PreferenceBody,
+    PreferenceEvidenceCounts,
     PreferenceProfileResponse,
+    PreferenceSnapshot,
+    RecommendationPreferences,
     RecommendationRequest,
     RecommendationResponse,
     RoomDetailResponse,
@@ -45,13 +58,25 @@ from .schemas import (
     StableId,
     ThermalPreview,
     ThermalPreviewResponse,
+    UserResponse,
+    WeatherResponse,
 )
+from .security import hash_password, new_token, token_hash, verify_password
 from .services.forecasting import DeterministicForecastStrategy
 from .services.history import build_history_points
-from .services.preferences import sanitize_score_breakdown
+from .services.thermal_analysis import analyze_thermal_preview
+from .services.weather import WeatherUnavailable
 
 router = APIRouter()
 logger = logging.getLogger("study_space_api.api")
+SESSION_COOKIE = "pssa_session"
+CSRF_COOKIE = "pssa_csrf"
+
+
+@dataclass(frozen=True)
+class AuthContext:
+    user: models.User
+    auth_session: models.AuthSession
 
 
 def utcnow() -> datetime:
@@ -74,6 +99,112 @@ def require_edge_auth(request: Request, settings: Settings = Depends(get_setting
     scheme, _, value = authorization.partition(" ")
     if scheme.lower() != "bearer" or not hmac.compare_digest(value, settings.edge_api_token):
         raise APIError(401, "AUTHENTICATION_REQUIRED", "A valid edge bearer token is required")
+
+
+def get_auth_context(request: Request, session: Session = Depends(get_session)) -> AuthContext:
+    raw_token = request.cookies.get(SESSION_COOKIE)
+    if not raw_token:
+        raise APIError(401, "AUTHENTICATION_REQUIRED", "Sign in is required")
+    auth_session = session.scalar(
+        select(models.AuthSession).where(models.AuthSession.token_hash == token_hash(raw_token))
+    )
+    if auth_session is None or auth_session.expires_at <= utcnow():
+        if auth_session is not None:
+            session.delete(auth_session)
+            session.commit()
+        raise APIError(401, "SESSION_EXPIRED", "The session is missing or expired")
+    user = session.get(models.User, auth_session.user_id)
+    if user is None:
+        raise APIError(401, "AUTHENTICATION_REQUIRED", "The account is unavailable")
+    return AuthContext(user=user, auth_session=auth_session)
+
+
+def require_user_write(request: Request, context: AuthContext = Depends(get_auth_context)) -> AuthContext:
+    supplied = request.headers.get("x-csrf-token", "")
+    if not supplied or not hmac.compare_digest(token_hash(supplied), context.auth_session.csrf_hash):
+        raise APIError(403, "CSRF_VALIDATION_FAILED", "The request could not be verified")
+    return context
+
+
+def require_admin(context: AuthContext = Depends(get_auth_context)) -> AuthContext:
+    if context.user.role != "admin":
+        raise APIError(403, "ADMIN_REQUIRED", "Administrator access is required")
+    return context
+
+
+def user_response(user: models.User) -> UserResponse:
+    return UserResponse(user_id=user.id, username=user.username, role=user.role, created_at=user.created_at)
+
+
+def default_user_preference(user_id: str, now: datetime) -> models.UserPreference:
+    return models.UserPreference(
+        user_id=user_id,
+        study_mode="quiet",
+        quiet_priority=0.8,
+        low_occupancy_priority=0.7,
+        brightness_priority=0.3,
+        comfort_priority=0.4,
+        distance_priority=0.2,
+        preferred_temperature_c=None,
+        learning_enabled=True,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def preference_snapshot(preference: models.UserPreference) -> PreferenceSnapshot:
+    return PreferenceSnapshot(
+        study_mode=preference.study_mode,
+        quiet_priority=preference.quiet_priority,
+        low_occupancy_priority=preference.low_occupancy_priority,
+        brightness_priority=preference.brightness_priority,
+        comfort_priority=preference.comfort_priority,
+        distance_priority=preference.distance_priority,
+        preferred_temperature_c=preference.preferred_temperature_c,
+    )
+
+
+def me_preference_response(preference: models.UserPreference) -> MePreferenceResponse:
+    snapshot = preference_snapshot(preference)
+    return MePreferenceResponse(
+        manual=snapshot,
+        learned=LearnedPreferenceValues(),
+        effective=snapshot,
+        evidence_counts=PreferenceEvidenceCounts(),
+        learning_enabled=preference.learning_enabled,
+        updated_at=preference.updated_at,
+    )
+
+
+def issue_session(
+    response: Response,
+    user: models.User,
+    session: Session,
+    settings: Settings,
+) -> AuthSessionResponse:
+    now = utcnow()
+    expires_at = now + timedelta(hours=settings.session_ttl_hours)
+    raw_token = new_token()
+    csrf_token = new_token()
+    session.add(
+        models.AuthSession(
+            token_hash=token_hash(raw_token),
+            csrf_hash=token_hash(csrf_token),
+            user_id=user.id,
+            created_at=now,
+            expires_at=expires_at,
+        )
+    )
+    session.commit()
+    cookie_options = {
+        "secure": settings.session_cookie_secure,
+        "samesite": "lax",
+        "path": "/",
+        "max_age": settings.session_ttl_hours * 3600,
+    }
+    response.set_cookie(SESSION_COOKIE, raw_token, httponly=True, **cookie_options)
+    response.set_cookie(CSRF_COOKIE, csrf_token, httponly=False, **cookie_options)
+    return AuthSessionResponse(user=user_response(user), csrf_token=csrf_token, expires_at=expires_at)
 
 
 def canonical_hash(payload: EdgeObservation) -> str:
@@ -159,6 +290,14 @@ async def health(request: Request, response: Response, session: Session = Depend
     )
 
 
+@router.get("/api/v1/weather", response_model=WeatherResponse)
+async def get_weather(request: Request) -> WeatherResponse:
+    try:
+        return await request.app.state.weather_service.get_current()
+    except WeatherUnavailable as exc:
+        raise APIError(503, "WEATHER_UNAVAILABLE", "Live campus weather is temporarily unavailable") from exc
+
+
 @router.post("/api/v1/edge/observations", response_model=ObservationAccepted, dependencies=[Depends(require_edge_auth)])
 def create_observation(payload: EdgeObservation, request: Request, session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> ObservationAccepted:
     now = utcnow()
@@ -241,27 +380,39 @@ def list_room_statuses(session: Session = Depends(get_session), settings: Settin
     return result
 
 
-@router.get("/api/v1/rooms/{room_id}/live", response_model=LiveSensorSnapshotResponse)
+@router.get(
+    "/api/v1/rooms/{room_id}/live",
+    response_model=LiveSensorSnapshotResponse,
+    dependencies=[Depends(require_admin)],
+)
 def get_live_sensor_snapshot(
     room_id: StableId,
     request: Request,
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> LiveSensorSnapshotResponse:
-    """Return the latest sensor summary with ephemeral thermal and sound previews."""
-
     room = RoomRepository(session).get(room_id)
     if room is None:
         raise APIError(404, "ROOM_NOT_FOUND", "Room was not found")
     now = utcnow()
-    result = LiveSensorSnapshotResponse(
-        generated_at=now,
-        room=build_room_status(session, room, settings, now),
-        thermal_preview=request.app.state.thermal_cache.get(room_id, now=now),
-        sound_preview=request.app.state.sound_cache.get(room_id, now=now),
+    status = build_room_status(session, room, settings, now)
+    thermal_preview = request.app.state.thermal_cache.get(room_id, now=now)
+    sound_preview = request.app.state.sound_cache.get(room_id, now=now)
+    people_count = request.app.state.people_count_cache.get(room_id, now=now)
+    analysis = analyze_thermal_preview(
+        thermal_preview,
+        model_people_count=people_count.predicted_people_count_rounded if people_count.available else None,
+        observation_people_count=status.features.thermal_hot_region_count,
     )
     session.commit()
-    return result
+    return LiveSensorSnapshotResponse(
+        generated_at=now,
+        room=status,
+        thermal_preview=thermal_preview,
+        sound_preview=sound_preview,
+        people_count=people_count,
+        thermal_analysis=analysis,
+    )
 
 
 @router.get("/api/v1/rooms/{room_id}", response_model=RoomDetailResponse)
@@ -289,9 +440,7 @@ def get_history(
     point_count = hours * 60 // bucket_minutes
     if point_count > settings.max_history_points:
         raise APIError(422, "VALIDATION_ERROR", "History query would return too many points")
-    # Keep the current minute inside the inclusive query window. Rounding down
-    # made a fresh status disagree with history until the following minute.
-    end = utcnow()
+    end = utcnow().replace(second=0, microsecond=0)
     start = end - timedelta(hours=hours)
     rows = ObservationRepository(session).range_for_room(room_id, start, end)
     return RoomHistoryResponse(
@@ -319,15 +468,146 @@ def get_forecast(
     return result
 
 
-@router.put("/api/v1/preferences/{profile_id}", response_model=PreferenceProfileResponse)
-def put_preference(
-    profile_id: StableId,
-    body: PreferenceBody,
+@router.post("/api/v1/auth/register", response_model=AuthSessionResponse)
+def register_user(
+    credentials: AuthCredentials,
+    response: Response,
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
-) -> PreferenceProfileResponse:
-    if not settings.allow_anonymous_demo:
-        raise APIError(404, "ANONYMOUS_DEMO_DISABLED", "Anonymous demo profiles are disabled")
+) -> AuthSessionResponse:
+    username = credentials.username.strip().lower()
+    if username == settings.admin_username.lower():
+        raise APIError(409, "USERNAME_RESERVED", "This username is reserved")
+    existing = session.scalar(select(models.User).where(models.User.username == username))
+    if existing is not None:
+        raise APIError(409, "USERNAME_TAKEN", "This username is already in use")
+    now = utcnow()
+    user = models.User(
+        id=str(uuid.uuid4()),
+        username=username,
+        password_hash=hash_password(credentials.password),
+        role="student",
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(user)
+    session.add(default_user_preference(user.id, now))
+    session.flush()
+    return issue_session(response, user, session, settings)
+
+
+@router.post("/api/v1/auth/login", response_model=AuthSessionResponse)
+def login_user(
+    credentials: AuthCredentials,
+    response: Response,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> AuthSessionResponse:
+    username = credentials.username.strip().lower()
+    user = session.scalar(select(models.User).where(models.User.username == username))
+    if (
+        user is None
+        and settings.admin_password is not None
+        and username == settings.admin_username.lower()
+        and hmac.compare_digest(credentials.password, settings.admin_password)
+    ):
+        now = utcnow()
+        user = models.User(
+            id=str(uuid.uuid4()),
+            username=username,
+            password_hash=hash_password(credentials.password),
+            role="admin",
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(user)
+        session.add(default_user_preference(user.id, now))
+        session.flush()
+    if user is None or not verify_password(credentials.password, user.password_hash):
+        raise APIError(401, "INVALID_CREDENTIALS", "Username or password is incorrect")
+    return issue_session(response, user, session, settings)
+
+
+@router.post("/api/v1/auth/logout")
+def logout_user(
+    response: Response,
+    session: Session = Depends(get_session),
+    context: AuthContext = Depends(require_user_write),
+) -> dict[str, bool | str]:
+    session.delete(context.auth_session)
+    session.commit()
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    response.delete_cookie(CSRF_COOKIE, path="/")
+    return {"schema_version": "1.0", "logged_out": True}
+
+
+@router.get("/api/v1/me", response_model=UserResponse)
+def get_me(context: AuthContext = Depends(get_auth_context)) -> UserResponse:
+    return user_response(context.user)
+
+
+@router.get("/api/v1/me/preferences", response_model=MePreferenceResponse)
+def get_my_preferences(
+    session: Session = Depends(get_session),
+    context: AuthContext = Depends(get_auth_context),
+) -> MePreferenceResponse:
+    preference = session.get(models.UserPreference, context.user.id)
+    if preference is None:
+        preference = default_user_preference(context.user.id, utcnow())
+        session.add(preference)
+        session.commit()
+    return me_preference_response(preference)
+
+
+@router.put("/api/v1/me/preferences", response_model=MePreferenceResponse)
+def put_my_preferences(
+    body: MePreferenceUpdate,
+    session: Session = Depends(get_session),
+    context: AuthContext = Depends(require_user_write),
+) -> MePreferenceResponse:
+    preference = session.get(models.UserPreference, context.user.id)
+    now = utcnow()
+    if preference is None:
+        preference = default_user_preference(context.user.id, now)
+        session.add(preference)
+    for key, value in body.model_dump(exclude={"schema_version"}).items():
+        setattr(preference, key, value)
+    preference.updated_at = now
+    session.commit()
+    return me_preference_response(preference)
+
+
+@router.post("/api/v1/me/recommendations", response_model=RecommendationResponse)
+async def get_my_recommendations(
+    body: AuthenticatedRecommendationRequest,
+    request: Request,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    context: AuthContext = Depends(get_auth_context),
+) -> RecommendationResponse:
+    preference = session.get(models.UserPreference, context.user.id)
+    if preference is None:
+        preference = default_user_preference(context.user.id, utcnow())
+        session.add(preference)
+        session.flush()
+    payload = RecommendationRequest(
+        schema_version="1.0",
+        profile_id=context.user.id,
+        study_mode=body.study_mode,
+        preferences=RecommendationPreferences(
+            quiet_priority=preference.quiet_priority,
+            low_occupancy_priority=preference.low_occupancy_priority,
+            brightness_priority=preference.brightness_priority,
+            comfort_priority=preference.comfort_priority,
+            distance_priority=preference.distance_priority,
+        ),
+        candidate_room_ids=body.candidate_room_ids,
+    )
+    return await recommendations(payload, request, session, settings)
+
+
+@router.put("/api/v1/preferences/{profile_id}", response_model=PreferenceProfileResponse)
+def put_preference(profile_id: StableId, body: PreferenceBody, session: Session = Depends(get_session)) -> PreferenceProfileResponse:
     now = utcnow()
     repository = PreferenceRepository(session)
     profile = repository.get(profile_id)
@@ -344,13 +624,7 @@ def put_preference(
 
 
 @router.get("/api/v1/preferences/{profile_id}", response_model=PreferenceProfileResponse)
-def get_preference(
-    profile_id: StableId,
-    session: Session = Depends(get_session),
-    settings: Settings = Depends(get_settings),
-) -> PreferenceProfileResponse:
-    if not settings.allow_anonymous_demo:
-        raise APIError(404, "ANONYMOUS_DEMO_DISABLED", "Anonymous demo profiles are disabled")
+def get_preference(profile_id: StableId, session: Session = Depends(get_session)) -> PreferenceProfileResponse:
     profile = PreferenceRepository(session).get(profile_id)
     if profile is None:
         raise APIError(404, "PROFILE_NOT_FOUND", "Preference profile was not found")
@@ -405,6 +679,7 @@ def put_sound_preview(
 @router.get(
     "/api/v1/rooms/{room_id}/sound-preview",
     response_model=SoundPreviewResponse,
+    dependencies=[Depends(require_admin)],
 )
 def get_sound_preview(
     room_id: StableId,
@@ -416,6 +691,43 @@ def get_sound_preview(
     return request.app.state.sound_cache.get(room_id)
 
 
+@router.put(
+    "/api/v1/edge/rooms/{room_id}/people-count",
+    response_model=PeopleCountPreviewResponse,
+    dependencies=[Depends(require_edge_auth)],
+)
+def put_people_count(
+    room_id: StableId,
+    body: PeopleCountPrediction,
+    request: Request,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> PeopleCountPreviewResponse:
+    if room_id != body.room_id:
+        raise APIError(422, "VALIDATION_ERROR", "Path room_id must match payload room_id")
+    if RoomRepository(session).get(room_id) is None:
+        raise APIError(404, "ROOM_NOT_FOUND", "Room was not found")
+    now = utcnow()
+    if body.observed_at > now + timedelta(seconds=settings.future_skew_seconds):
+        raise APIError(422, "PREVIEW_TIME_INVALID", "observed_at is too far in the future")
+    return request.app.state.people_count_cache.put(body, now=now)
+
+
+@router.get(
+    "/api/v1/rooms/{room_id}/people-count",
+    response_model=PeopleCountPreviewResponse,
+    dependencies=[Depends(require_admin)],
+)
+def get_people_count(
+    room_id: StableId,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> PeopleCountPreviewResponse:
+    if RoomRepository(session).get(room_id) is None:
+        raise APIError(404, "ROOM_NOT_FOUND", "Room was not found")
+    return request.app.state.people_count_cache.get(room_id)
+
+
 @router.post("/api/v1/recommendations", response_model=RecommendationResponse)
 async def recommendations(
     payload: RecommendationRequest,
@@ -423,8 +735,6 @@ async def recommendations(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> RecommendationResponse:
-    if not settings.allow_anonymous_demo:
-        raise APIError(404, "ANONYMOUS_DEMO_DISABLED", "Anonymous recommendations are disabled")
     rooms_by_id = {room.id: room for room in RoomRepository(session).list_active()}
     missing = [room_id for room_id in payload.candidate_room_ids if room_id not in rooms_by_id]
     if missing:
@@ -441,14 +751,9 @@ async def recommendations(
         fallback_reason = type(exc).__name__
         adapter_result = await StubRecommendationAdapter().rank(context)
         adapter_result.warnings.append("RECOMMENDATION_ADAPTER_FALLBACK")
-    fallback_reason = fallback_reason or adapter_result.fallback_reason
     latency_ms = (time.perf_counter() - started) * 1000
     req_id = request_id_for(request)
     response = RecommendationResponse(request_id=req_id, generated_at=now, recommendations=adapter_result.recommendations, warnings=adapter_result.warnings)
-    score_breakdown = sanitize_score_breakdown(
-        adapter_result.score_breakdown,
-        payload.candidate_room_ids,
-    )
     RecommendationRepository(session).add(
         models.RecommendationRecord(
             request_id=req_id,
@@ -456,7 +761,6 @@ async def recommendations(
             generated_at=now,
             candidate_room_ids_json=payload.candidate_room_ids,
             rankings_json=[item.model_dump(mode="json") for item in response.recommendations],
-            score_breakdown_json=score_breakdown or None,
             explanation_source=response.recommendations[0].explanation_source if response.recommendations else "stub",
             adapter_name=adapter_result.adapter_name,
             fallback_reason=fallback_reason,

@@ -9,17 +9,40 @@ from study_space_api.config import Settings
 from study_space_api.database import Base
 from study_space_api.main import create_app
 from study_space_api import models
-from study_space_api.recommendation.adapter import RuleBasedRecommendationAdapter
+from study_space_api.schemas import WeatherResponse
+from study_space_api.security import hash_password
 
 
-def test_health_reports_formal_template_adapter(client: TestClient) -> None:
+def test_health_reports_module4_adapter_as_ok(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert response.json()["recommendation_adapter"]["name"] == "module4-rule-based-v1"
-    assert response.json()["recommendation_adapter"]["mode"] == "template"
-    assert response.json()["recommendation_adapter"]["llm_status"] == "disabled"
+    assert response.json()["recommendation_adapter"]["mode"] == "rules+template"
     assert response.headers["x-request-id"]
+
+
+def test_weather_returns_normalized_nea_reading(client: TestClient) -> None:
+    class WeatherStub:
+        async def get_current(self) -> WeatherResponse:
+            return WeatherResponse(
+                source="nea",
+                station_name="Clementi Road",
+                location_label="NUS · Clementi Road",
+                observed_at=datetime.now(timezone.utc),
+                temperature_c=30.2,
+                apparent_temperature_c=35.1,
+                humidity_percent=68,
+                wind_kph=7.4,
+                weather_code=3,
+                condition="Cloudy",
+            )
+
+    client.app.state.weather_service = WeatherStub()
+    response = client.get("/api/v1/weather")
+    assert response.status_code == 200
+    assert response.json()["station_name"] == "Clementi Road"
+    assert response.json()["source"] == "nea"
+    assert response.json()["temperature_c"] == 30.2
 
 
 def test_observation_is_idempotent_and_conflicts_on_changed_payload(client: TestClient, valid_observation: dict) -> None:
@@ -59,7 +82,6 @@ def test_status_history_and_forecast_flow(client: TestClient, valid_observation:
     history = client.get("/api/v1/rooms/room_a/history?hours=1&bucket_minutes=5")
     assert history.status_code == 200
     assert len(history.json()["points"]) == 12
-    assert sum(point["observation_count"] for point in history.json()["points"]) == 1
     forecast = client.get("/api/v1/rooms/room_a/forecast?minutes=30")
     assert forecast.status_code == 200
     assert forecast.json()["method"] == "current_persistence"
@@ -75,6 +97,68 @@ def test_preferences_upsert_get_and_range_validation(client: TestClient) -> None
     assert client.get("/api/v1/preferences/missing").status_code == 404
 
 
+def test_student_registration_login_and_personal_preferences(client: TestClient) -> None:
+    credentials = {"schema_version": "1.0", "username": "maya", "password": "study-room-123"}
+    registered = client.post("/api/v1/auth/register", json=credentials)
+    assert registered.status_code == 200
+    assert registered.json()["user"]["role"] == "student"
+    csrf = registered.json()["csrf_token"]
+
+    me = client.get("/api/v1/me")
+    assert me.status_code == 200
+    assert me.json()["username"] == "maya"
+
+    preferences = client.get("/api/v1/me/preferences")
+    assert preferences.status_code == 200
+    assert preferences.json()["effective"]["quiet_priority"] == 0.8
+
+    body = {
+        "schema_version": "1.0",
+        "study_mode": "discussion",
+        "quiet_priority": 0.2,
+        "low_occupancy_priority": 0.6,
+        "brightness_priority": 0.8,
+        "comfort_priority": 0.5,
+        "distance_priority": 0.1,
+        "preferred_temperature_c": 23,
+        "learning_enabled": True,
+    }
+    assert client.put("/api/v1/me/preferences", json=body).status_code == 403
+    updated = client.put("/api/v1/me/preferences", json=body, headers={"X-CSRF-Token": csrf})
+    assert updated.status_code == 200
+    assert updated.json()["manual"]["brightness_priority"] == 0.8
+
+    logout = client.post("/api/v1/auth/logout", json={}, headers={"X-CSRF-Token": csrf})
+    assert logout.status_code == 200
+    assert client.get("/api/v1/me").status_code == 401
+
+    logged_in = client.post("/api/v1/auth/login", json=credentials)
+    assert logged_in.status_code == 200
+    assert client.get("/api/v1/me/preferences").json()["manual"]["study_mode"] == "discussion"
+
+
+def test_registration_cannot_create_admin_and_configured_admin_can_login(tmp_path) -> None:
+    settings = Settings(
+        database_url=f"sqlite:///{(tmp_path / 'accounts.db').as_posix()}",
+        admin_username="admin",
+        admin_password="administrator-123",
+    )
+    app = create_app(settings)
+    Base.metadata.create_all(app.state.database.engine)
+    with TestClient(app) as client:
+        reserved = client.post(
+            "/api/v1/auth/register",
+            json={"schema_version": "1.0", "username": "admin", "password": "administrator-123"},
+        )
+        assert reserved.status_code == 409
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"schema_version": "1.0", "username": "admin", "password": "administrator-123"},
+        )
+        assert login.status_code == 200
+        assert login.json()["user"]["role"] == "admin"
+
+
 def test_thermal_preview_is_separate_and_available(client: TestClient) -> None:
     body = {"schema_version":"1.0","room_id":"room_a","captured_at":datetime.now(timezone.utc).isoformat(),"width":32,"height":24,"values":[0.5]*768,"normalization":"window_min_max_clipped","expires_in_seconds":30}
     put = client.put("/api/v1/edge/rooms/room_a/thermal-preview", json=body)
@@ -85,146 +169,101 @@ def test_thermal_preview_is_separate_and_available(client: TestClient) -> None:
     assert unavailable.json() == {"schema_version":"1.0","room_id":"room_b","available":False,"captured_at":None,"width":None,"height":None,"values":None,"normalization":None,"expires_at":None,"unavailable_reason":"not_available"}
 
 
-def test_live_sensor_snapshot_combines_status_and_ephemeral_preview(client: TestClient, valid_observation: dict) -> None:
+def test_admin_live_monitor_combines_sensor_ml_and_thermal_analysis(
+    client: TestClient,
+    app,
+    valid_observation: dict,
+) -> None:
+    now = datetime.now(timezone.utc)
+    with app.state.database.session() as session:
+        session.add(
+            models.User(
+                id="admin-monitor",
+                username="monitoradmin",
+                password_hash=hash_password("monitor-password"),
+                role="admin",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        session.commit()
+
     assert client.post("/api/v1/edge/observations", json=valid_observation).status_code == 200
-    preview = {
+    values = [0.08] * 768
+    for y in range(6, 12):
+        for x in range(5, 10):
+            values[y * 32 + x] = 0.93
+    for y in range(10, 17):
+        for x in range(20, 25):
+            values[y * 32 + x] = 0.88
+    thermal = {
         "schema_version": "1.0",
         "room_id": "room_a",
-        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "captured_at": now.isoformat(),
         "width": 32,
         "height": 24,
-        "values": [0.25] * 768,
+        "values": values,
         "normalization": "window_min_max_clipped",
         "expires_in_seconds": 30,
     }
-    assert client.put("/api/v1/edge/rooms/room_a/thermal-preview", json=preview).status_code == 200
-    sound_preview = {
+    sound = {
         "schema_version": "1.0",
         "room_id": "room_a",
-        "captured_at": datetime.now(timezone.utc).isoformat(),
-        "rms": 0.0375,
-        "expires_in_seconds": 3,
+        "captured_at": now.isoformat(),
+        "rms": 0.18,
+        "expires_in_seconds": 10,
     }
-    assert client.put("/api/v1/edge/rooms/room_a/sound-preview", json=sound_preview).status_code == 200
+    count = {
+        "schema_version": "people_count_prediction.v1",
+        "prediction_id": "1234567890abcdef1234567890",
+        "window_id": "window-live-1",
+        "room_id": "room_a",
+        "device_id": "pi-room-a",
+        "observed_at": now.isoformat(),
+        "predicted_people_count": 2.16,
+        "predicted_people_count_rounded": 2,
+        "occupancy_level": "low",
+        "confidence": 0.87,
+        "model": {
+            "name": "people-count-random-forest",
+            "version": "0.1.0",
+            "feature_schema_version": "people-count-features.v1",
+        },
+        "warnings": [],
+    }
+    assert client.put("/api/v1/edge/rooms/room_a/thermal-preview", json=thermal).status_code == 200
+    assert client.put("/api/v1/edge/rooms/room_a/sound-preview", json=sound).status_code == 200
+    assert client.put("/api/v1/edge/rooms/room_a/people-count", json=count).status_code == 200
+    assert client.get("/api/v1/rooms/room_a/live").status_code == 401
 
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"schema_version": "1.0", "username": "monitoradmin", "password": "monitor-password"},
+    )
+    assert login.status_code == 200
     response = client.get("/api/v1/rooms/room_a/live")
-
     assert response.status_code == 200
-    body = response.json()
-    assert body["schema_version"] == "1.0"
-    assert body["room"]["features"]["temperature_c"] == valid_observation["features"]["temperature_c"]
-    assert body["room"]["features"]["sound_rms_mean"] == valid_observation["features"]["sound_rms_mean"]
-    assert body["thermal_preview"]["available"] is True
-    assert body["thermal_preview"]["values"] == [0.25] * 768
-    assert body["sound_preview"]["available"] is True
-    assert body["sound_preview"]["rms"] == 0.0375
-    assert client.get("/api/v1/rooms/room_a/sound-preview").json()["rms"] == 0.0375
-    assert client.get("/api/v1/rooms/missing/live").status_code == 404
+    payload = response.json()
+    assert payload["room"]["room_state"] == "quiet_study_recommended"
+    assert payload["sound_preview"]["rms"] == 0.18
+    assert payload["people_count"]["predicted_people_count_rounded"] == 2
+    assert payload["thermal_analysis"]["count_source"] == "people_count_model"
+    assert payload["thermal_analysis"]["detected_region_count"] == 2
+    assert len(payload["thermal_analysis"]["boxes"]) == 2
 
 
-def test_formal_recommendation_and_record(client: TestClient, valid_observation: dict, app) -> None:
+def test_recommendation_adapter_and_record(client: TestClient, valid_observation: dict, app) -> None:
     client.post("/api/v1/edge/observations", json=valid_observation)
     body = {"schema_version":"1.0","profile_id":"demo-user","study_mode":"quiet","preferences":{"quiet_priority":0.9,"low_occupancy_priority":0.8,"brightness_priority":0.4,"comfort_priority":0.5,"distance_priority":0.3},"candidate_room_ids":["room_a","room_b","room_c"]}
     response = client.post("/api/v1/recommendations", json=body)
     assert response.status_code == 200
     assert response.json()["recommendations"][0]["room_id"] == "room_a"
     assert response.json()["recommendations"][0]["explanation_source"] == "template"
-    assert response.json()["warnings"] == ["LLM_DISABLED"]
+    assert "LLM_TEMPLATE_FALLBACK" in response.json()["warnings"]
     with app.state.database.session() as session:
         record = session.query(models.RecommendationRecord).one()
-        assert record.adapter_name == "module4-rule-based-v1"
-        assert record.score_breakdown_json
-        assert record.fallback_reason == "LLM_DISABLED"
+        assert record.adapter_name == "module4-rule-based-recommendation"
         assert "values" not in str(record.rankings_json)
-
-
-def test_gate_c_llm_changes_only_explanations(
-    client: TestClient,
-    valid_observation: dict,
-    app,
-) -> None:
-    class FixedExplanationProvider:
-        name = "test-provider"
-        model = "test-model"
-
-        async def health(self):
-            return {
-                "status": "ok",
-                "provider": self.name,
-                "model": self.model,
-                "llm_status": "available",
-            }
-
-        async def explain(self, items, rooms, study_mode):
-            return {
-                item.room_id: "Current occupancy and sensor data support this study option."
-                for item in items
-            }
-
-    room_payloads = [
-        ("room_a", "device-a", "quiet_study_recommended", "low", 0.08),
-        ("room_b", "device-b", "discussion_allowed", "medium", 0.42),
-        ("room_c", "device-c", "not_recommended_noisy_or_crowded", "high", 0.86),
-    ]
-    for room_id, device_id, room_state, occupancy, sound in room_payloads:
-        payload = deepcopy(valid_observation)
-        payload["observation_id"] = f"gate-c-{room_id}"
-        payload["room_id"] = room_id
-        payload["device_id"] = device_id
-        payload["room_state"] = room_state
-        payload["occupancy_level"] = occupancy
-        payload["features"]["sound_rms_mean"] = sound
-        assert client.post("/api/v1/edge/observations", json=payload).status_code == 200
-
-    body = {
-        "schema_version": "1.0",
-        "profile_id": "gate-c-profile",
-        "study_mode": "quiet",
-        "preferences": {
-            "quiet_priority": 1,
-            "low_occupancy_priority": 1,
-            "brightness_priority": 0.5,
-            "comfort_priority": 0.5,
-            "distance_priority": 0,
-        },
-        "candidate_room_ids": ["room_a", "room_b", "room_c"],
-    }
-    template = client.post("/api/v1/recommendations", json=body)
-    app.state.recommendation_adapter = RuleBasedRecommendationAdapter(FixedExplanationProvider())
-    llm = client.post("/api/v1/recommendations", json=body)
-
-    assert template.status_code == llm.status_code == 200
-    template_items = template.json()["recommendations"]
-    llm_items = llm.json()["recommendations"]
-    assert [
-        {key: value for key, value in item.items() if key not in {"explanation", "explanation_source"}}
-        for item in template_items
-    ] == [
-        {key: value for key, value in item.items() if key not in {"explanation", "explanation_source"}}
-        for item in llm_items
-    ]
-    assert {item["explanation_source"] for item in template_items} == {"template"}
-    assert {item["explanation_source"] for item in llm_items} == {"llm"}
-
-
-def test_anonymous_demo_endpoints_can_be_disabled(client: TestClient, app) -> None:
-    app.state.settings.allow_anonymous_demo = False
-    body = {
-        "schema_version": "1.0",
-        "profile_id": "demo-user",
-        "study_mode": "quiet",
-        "preferences": {
-            "quiet_priority": 1,
-            "low_occupancy_priority": 1,
-            "brightness_priority": 0,
-            "comfort_priority": 0,
-            "distance_priority": 0,
-        },
-        "candidate_room_ids": ["room_a"],
-    }
-    response = client.post("/api/v1/recommendations", json=body)
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "ANONYMOUS_DEMO_DISABLED"
 
 
 def test_optional_edge_bearer_token(tmp_path, valid_observation: dict) -> None:

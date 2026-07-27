@@ -103,12 +103,53 @@ export interface SoundPreviewResponse {
   unavailable_reason: string | null;
 }
 
+export interface PeopleCountPreviewResponse {
+  schema_version: "people_count_prediction.v1";
+  room_id: string;
+  available: boolean;
+  observed_at: string | null;
+  predicted_people_count: number | null;
+  predicted_people_count_rounded: number | null;
+  occupancy_level: OccupancyLevel | null;
+  confidence: number | null;
+  model: {
+    name: string;
+    version: string;
+    feature_schema_version: string;
+  } | null;
+  warnings: string[];
+  expires_at: string | null;
+  unavailable_reason: string | null;
+}
+
+export interface ThermalDetectionBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  confidence: number;
+  peak_intensity: number;
+}
+
+export interface ThermalAnalysisResponse {
+  schema_version: "1.0";
+  available: boolean;
+  method: "thermal_connected_regions";
+  threshold: number | null;
+  detected_region_count: number;
+  estimated_people_count: number | null;
+  count_source: "people_count_model" | "thermal_regions" | "room_observation" | "unavailable";
+  boxes: ThermalDetectionBox[];
+}
+
 export interface LiveSensorSnapshotResponse {
   schema_version: "1.0";
   generated_at: string;
   room: RoomStatus;
   thermal_preview: ThermalPreviewResponse;
   sound_preview: SoundPreviewResponse;
+  people_count: PeopleCountPreviewResponse;
+  thermal_analysis: ThermalAnalysisResponse;
 }
 
 export interface RecommendationPreferences {
@@ -159,6 +200,7 @@ export interface UserResponse {
   schema_version: "1.0";
   user_id: string;
   username: string;
+  role: "student" | "admin";
   created_at: string;
 }
 
@@ -268,4 +310,18 @@ export interface DashboardData {
   preferences?: MePreferenceResponse | null;
   selectionHistory?: RoomSelectionHistoryResponse | null;
   authenticated?: boolean;
+}
+
+export interface WeatherInfo {
+  temperatureC: number;
+  apparentTemperatureC: number;
+  humidityPercent: number;
+  windKph: number;
+  weatherCode: number;
+  observedAt: string;
+  locationLabel: string;
+  stationName: string;
+  condition: string;
+  source: "nea" | "nea_cache";
+  isCached: boolean;
 }

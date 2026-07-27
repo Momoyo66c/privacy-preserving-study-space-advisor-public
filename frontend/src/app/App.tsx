@@ -1,1326 +1,1561 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
-  allCandidateIds,
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  ArrowLeft,
+  BookOpen,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  CloudSun,
+  Cpu,
+  Database,
+  DoorOpen,
+  Droplets,
+  ExternalLink,
+  Gauge,
+  Home,
+  Languages,
+  Lightbulb,
+  LogIn,
+  LogOut,
+  MapPin,
+  Menu,
+  Radio,
+  RefreshCw,
+  Search,
+  Server,
+  Settings,
+  ShieldCheck,
+  ScanLine,
+  SlidersHorizontal,
+  Thermometer,
+  UserCircle,
+  Users,
+  Volume2,
+  Wifi,
+  X,
+} from "lucide-react";
+import {
   defaultRequest,
-  deleteMe,
-  deleteRoomSelections,
   isRealApi,
   loadDashboardData,
   loadLiveSensorSnapshot,
-  loadSoundPreview,
-  login as loginUser,
-  logout as logoutUser,
-  recordRoomSelection,
-  register as registerUser,
-  resetLearnedPreferences,
+  loadMyPreferences,
+  loadWeather,
+  login,
+  logout,
+  register,
+  restoreSession,
   saveMyPreferences,
 } from "../api/client";
+import { catalogFor } from "../data/roomCatalog";
+import { LanguageProvider, localizeKnownMessage, selectText, useLanguage, type Language } from "../i18n";
 import type {
   DashboardData,
-  HistoryPoint,
   LiveSensorSnapshotResponse,
+  MePreferenceResponse,
   OccupancyLevel,
   RecommendationItem,
   RecommendationRequest,
+  RoomState,
   RoomStatus,
-  SoundPreviewResponse,
   StudyMode,
-  ThermalPreviewResponse,
+  UserResponse,
+  WeatherInfo,
 } from "../types/contracts";
 
-type ViewMode = "student" | "admin";
-type FailedSelection = {
-  id: string;
-  roomId: string;
-  roomName: string;
-  source: "recommendation" | "room_detail";
-  recommendationRequestId: string | null;
-  message: string;
+type StudentPage = "home" | "rooms" | "preferences" | "account";
+type AdminPage = "overview" | "monitor" | "rooms" | "system";
+type AuthRole = "student" | "admin";
+
+const roomStateText: Record<RoomState, Record<Language, string>> = {
+  empty_or_low_activity: { zh: "安静空闲", en: "Quiet and available" },
+  quiet_study_recommended: { zh: "适合专注学习", en: "Recommended for quiet study" },
+  discussion_allowed: { zh: "适合小组讨论", en: "Suitable for group discussion" },
+  not_recommended_noisy_or_crowded: { zh: "当前较拥挤", en: "Currently crowded" },
+  unknown: { zh: "状态待确认", en: "Status pending" },
 };
 
-const labels = {
-  quiet: "Quiet study",
-  discussion: "Discussion",
-  any: "Any mode",
-  empty: "Empty",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  unknown: "Unknown",
-  empty_or_low_activity: "Low activity",
-  quiet_study_recommended: "Quiet",
-  discussion_allowed: "Discussion",
-  not_recommended_noisy_or_crowded: "Noisy/crowded",
+const occupancyText: Record<OccupancyLevel, Record<Language, string>> = {
+  empty: { zh: "空间很宽松", en: "Plenty of space" },
+  low: { zh: "空位较充足", en: "Good seat availability" },
+  medium: { zh: "使用人数适中", en: "Moderately occupied" },
+  high: { zh: "目前较拥挤", en: "Currently crowded" },
+  unknown: { zh: "占用情况待确认", en: "Occupancy pending" },
 };
+
+const quotes = [
+  { zh: "把注意力留给此刻，进度会在安静中发生。", en: "Give this moment your attention; progress often begins in quiet." },
+  { zh: "先找到适合自己的空间，再开始今天的专注。", en: "Find the space that suits you, then settle into focused work." },
+  { zh: "慢一点没关系，稳定前进就很好。", en: "There is no harm in moving slowly when you are moving steadily." },
+  { zh: "一次只做好一件事，也是一种很强的节奏。", en: "Doing one thing well at a time is a powerful rhythm." },
+  { zh: "给今天留一点安静，也给自己留一点余地。", en: "Leave a little quiet in your day and a little room for yourself." },
+  { zh: "清晰的环境，会让思路更容易抵达。", en: "A clear environment makes clear thinking easier to reach." },
+  { zh: "今天的每一小步，都在靠近更完整的答案。", en: "Every small step today brings the answer closer." },
+];
 
 export function App() {
-  const [viewMode, setViewMode] = useState<ViewMode>("student");
-  const [adminAuthenticated, setAdminAuthenticated] = useState(() => window.sessionStorage.getItem("study-space-admin-auth") === "true");
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
+  );
+}
+
+function AppContent() {
+  const { language, choose } = useLanguage();
+  const [user, setUser] = useState<UserResponse | null>(null);
   const [request, setRequest] = useState<RecommendationRequest>(defaultRequest);
   const [data, setData] = useState<DashboardData | null>(null);
-  const [selectedRoomId, setSelectedRoomId] = useState("room_a");
+  const [weather, setWeather] = useState<WeatherInfo | null>(null);
+  const [weatherError, setWeatherError] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const [authBusy, setAuthBusy] = useState(false);
-  const [authMessage, setAuthMessage] = useState<string | null>(null);
-  const [selectionMessage, setSelectionMessage] = useState<string | null>(null);
-  const [liveSnapshot, setLiveSnapshot] = useState<LiveSensorSnapshotResponse | null>(null);
-  const [soundPreview, setSoundPreview] = useState<SoundPreviewResponse | null>(null);
-  const [liveSensorError, setLiveSensorError] = useState<string | null>(null);
-  const [outbox, setOutbox] = useState<FailedSelection[]>([]);
-
-  const selectedRoom = data?.rooms.find((room) => room.room_id === selectedRoomId) ?? data?.rooms[0];
-  const selectedRecommendation = data?.recommendations.recommendations.find((item) => item.room_id === selectedRoom?.room_id);
-
-  async function refresh(nextRequest = request, options: { selectTopRoom?: boolean } = {}) {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await loadDashboardData(nextRequest);
-      setData(response);
-      setSelectedRoomId((currentRoomId) => {
-        if (options.selectTopRoom) {
-          return response.recommendations.recommendations[0]?.room_id ?? response.rooms[0]?.room_id ?? "";
-        }
-        return response.rooms.some((room) => room.room_id === currentRoomId) ? currentRoomId : (response.rooms[0]?.room_id ?? "");
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Dashboard data could not be loaded.");
-    } finally {
-      setLoading(false);
-    }
-  }
 
   useEffect(() => {
-    void refresh(request);
-    const seconds = Number(import.meta.env.VITE_REFRESH_SECONDS ?? 10);
-    const id = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refresh(request);
-    }, Math.max(5, seconds) * 1000);
-    return () => window.clearInterval(id);
+    let active = true;
+    async function bootstrap() {
+      try {
+        const restored = await restoreSession();
+        if (!active || !restored) return;
+        const preferences = await loadMyPreferences(restored);
+        const nextRequest = requestFromPreferences(preferences, restored.user_id);
+        const dashboard = await loadDashboardData(restored, nextRequest);
+        if (!active) return;
+        setUser(restored);
+        setRequest(nextRequest);
+        setData(dashboard);
+      } catch (err) {
+        if (active) setError(messageFrom(err, choose("应用暂时无法加载。", "The application is temporarily unavailable."), language));
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    void bootstrap();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
-    setLiveSnapshot(null);
-    setSoundPreview(null);
-    setLiveSensorError(null);
-    if (!isRealApi || !selectedRoomId) return;
-
-    let stopped = false;
-    let timer: number | undefined;
-    const configuredMs = Number(import.meta.env.VITE_LIVE_SENSOR_POLL_MS ?? 1000);
-    const pollMs = Number.isFinite(configuredMs) ? Math.max(500, configuredMs) : 1000;
-
-    async function pollLiveSensors() {
-      try {
-        const next = await loadLiveSensorSnapshot(selectedRoomId);
-        if (stopped) return;
-        if (next.room.is_stale) {
-          setLiveSnapshot(null);
-          setSoundPreview(null);
-          setLiveSensorError("Live sensor data is stale. Waiting for a new Raspberry Pi observation.");
-        } else {
-          setLiveSnapshot(next);
-          setSoundPreview(next.sound_preview);
-          setLiveSensorError(null);
+    if (!user || user.role !== "student") return;
+    let active = true;
+    loadWeather()
+      .then((result) => {
+        if (active) {
+          setWeather(result);
+          setWeatherError(false);
         }
-      } catch (err) {
-        if (stopped) return;
-        setLiveSnapshot(null);
-        setSoundPreview(null);
-        setLiveSensorError(err instanceof Error ? err.message : "Live sensor data could not be loaded.");
-      } finally {
-        if (!stopped) timer = window.setTimeout(() => void pollLiveSensors(), pollMs);
-      }
-    }
-
-    void pollLiveSensors();
+      })
+      .catch(() => {
+        if (active) setWeatherError(true);
+      });
     return () => {
-      stopped = true;
-      if (timer !== undefined) window.clearTimeout(timer);
+      active = false;
     };
-  }, [selectedRoomId]);
+  }, [user]);
 
-  useEffect(() => {
-    if (!isRealApi || !selectedRoomId) return;
-
-    let stopped = false;
-    let timer: number | undefined;
-    const configuredMs = Number(import.meta.env.VITE_SOUND_POLL_MS ?? 250);
-    const pollMs = Number.isFinite(configuredMs) ? Math.max(100, configuredMs) : 250;
-
-    async function pollSound() {
-      try {
-        const next = await loadSoundPreview(selectedRoomId);
-        if (!stopped) setSoundPreview(next);
-      } catch {
-        if (!stopped) setSoundPreview(null);
-      } finally {
-        if (!stopped) timer = window.setTimeout(() => void pollSound(), pollMs);
-      }
+  async function authenticate(role: AuthRole, mode: "login" | "register", username: string, password: string) {
+    setError(null);
+    const result = mode === "register" ? await register({ username, password }) : await login({ username, password });
+    if (result.user.role !== role) {
+      await logout();
+      throw new Error(
+        role === "admin"
+          ? choose("该账户不是管理员账户。", "This account does not have administrator access.")
+          : choose("请从管理员入口登录该账户。", "Please sign in to this account through the administrator portal."),
+      );
     }
-
-    void pollSound();
-    return () => {
-      stopped = true;
-      if (timer !== undefined) window.clearTimeout(timer);
-    };
-  }, [selectedRoomId]);
-
-  async function applyRequest(nextRequest: RecommendationRequest) {
+    const preferences = await loadMyPreferences(result.user);
+    const nextRequest = requestFromPreferences(preferences, result.user.user_id);
+    const dashboard = await loadDashboardData(result.user, nextRequest);
+    setUser(result.user);
     setRequest(nextRequest);
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 1800);
-    try {
-      if (isRealApi && data?.authenticated) {
-        await saveMyPreferences(nextRequest, data.preferences?.learning_enabled ?? true);
-      }
-      await refresh(nextRequest, { selectTopRoom: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Preferences could not be saved.");
-    }
+    setData(dashboard);
   }
 
-  async function handleAuth(mode: "login" | "register", username: string, password: string) {
-    setAuthBusy(true);
-    setAuthMessage(null);
+  async function signOut() {
+    await logout();
+    setUser(null);
+    setData(null);
+    setWeather(null);
+    setRequest(defaultRequest);
+  }
+
+  async function refresh(nextRequest = request) {
+    if (!user) return;
+    setRefreshing(true);
     setError(null);
     try {
-      const session = mode === "login" ? await loginUser({ username, password }) : await registerUser({ username, password });
-      setAuthMessage(`Signed in as ${session.user.username}.`);
-      await refresh(request, { selectTopRoom: true });
+      setData(await loadDashboardData(user, nextRequest));
     } catch (err) {
-      setAuthMessage(err instanceof Error ? err.message : "Authentication failed.");
+      setError(messageFrom(err, choose("最新状态暂时无法获取。", "The latest room status is temporarily unavailable."), language));
     } finally {
-      setAuthBusy(false);
+      setRefreshing(false);
     }
   }
 
-  async function handleLogout() {
-    setAuthBusy(true);
-    setAuthMessage(null);
+  async function updatePreferences(nextRequest: RecommendationRequest) {
+    if (!user) return;
+    setRefreshing(true);
+    setError(null);
     try {
-      await logoutUser();
-      setAuthMessage("Signed out.");
-      await refresh(request, { selectTopRoom: true });
+      await saveMyPreferences(user, nextRequest, data?.preferences?.learning_enabled ?? true);
+      const dashboard = await loadDashboardData(user, nextRequest);
+      setRequest(nextRequest);
+      setData(dashboard);
     } catch (err) {
-      setAuthMessage(err instanceof Error ? err.message : "Sign out failed.");
+      setError(messageFrom(err, choose("偏好设置保存失败。", "Your preferences could not be saved."), language));
+      throw err;
     } finally {
-      setAuthBusy(false);
+      setRefreshing(false);
     }
   }
 
-  async function handleLearningToggle(enabled: boolean) {
-    if (!data?.authenticated) return;
-    setAuthBusy(true);
+  if (loading) return <AppLoading />;
+  if (!user) return <AuthPortal onAuthenticate={authenticate} />;
+  if (!data) {
+    return (
+      <main className="fatal-state">
+        <AlertTriangle aria-hidden="true" />
+        <h1>{choose("暂时无法进入系统", "Unable to open the application")}</h1>
+        <p>{error ?? choose("请重新登录后再试。", "Please sign in again and retry.")}</p>
+        <button type="button" className="primary-button" onClick={() => void signOut()}>
+          {choose("返回登录", "Return to sign in")}
+        </button>
+      </main>
+    );
+  }
+
+  return user.role === "admin" ? (
+    <AdminApp user={user} data={data} error={error} refreshing={refreshing} onRefresh={() => void refresh()} onSignOut={() => void signOut()} />
+  ) : (
+    <StudentApp
+      user={user}
+      data={data}
+      request={request}
+      weather={weather}
+      weatherError={weatherError}
+      error={error}
+      refreshing={refreshing}
+      onRefresh={() => void refresh()}
+      onSavePreferences={updatePreferences}
+      onSignOut={() => void signOut()}
+    />
+  );
+}
+
+function AuthPortal({
+  onAuthenticate,
+}: {
+  onAuthenticate: (role: AuthRole, mode: "login" | "register", username: string, password: string) => Promise<void>;
+}) {
+  const { language, choose } = useLanguage();
+  const [role, setRole] = useState<AuthRole>("student");
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  function switchRole(nextRole: AuthRole) {
+    setRole(nextRole);
+    setMode("login");
+    setMessage(null);
+    setUsername("");
+    setPassword("");
+  }
+
+  function fillDemo() {
+    setUsername(role === "admin" ? "admin" : "student");
+    setPassword(role === "admin" ? "admin1234" : "study1234");
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage(null);
     try {
-      await saveMyPreferences(request, enabled);
-      setAuthMessage(enabled ? "Preference learning enabled." : "Preference learning paused.");
-      await refresh(request);
+      await onAuthenticate(role, mode, username.trim(), password);
     } catch (err) {
-      setAuthMessage(err instanceof Error ? err.message : "Learning setting could not be saved.");
+      setMessage(messageFrom(err, choose("登录失败，请重试。", "Sign-in failed. Please try again."), language));
     } finally {
-      setAuthBusy(false);
-    }
-  }
-
-  async function handleResetLearned() {
-    setAuthBusy(true);
-    try {
-      await resetLearnedPreferences();
-      setAuthMessage("Learned preference values reset.");
-      await refresh(request);
-    } catch (err) {
-      setAuthMessage(err instanceof Error ? err.message : "Learned preferences could not be reset.");
-    } finally {
-      setAuthBusy(false);
-    }
-  }
-
-  async function handleDeleteSelections() {
-    setAuthBusy(true);
-    try {
-      await deleteRoomSelections();
-      setAuthMessage("Room selection history cleared.");
-      await refresh(request);
-    } catch (err) {
-      setAuthMessage(err instanceof Error ? err.message : "Selection history could not be cleared.");
-    } finally {
-      setAuthBusy(false);
-    }
-  }
-
-  async function handleDeleteAccount() {
-    if (!window.confirm("Delete this local account and its learning history?")) return;
-    setAuthBusy(true);
-    try {
-      await deleteMe();
-      setAuthMessage("Account deleted.");
-      setOutbox([]);
-      await refresh(request, { selectTopRoom: true });
-    } catch (err) {
-      setAuthMessage(err instanceof Error ? err.message : "Account could not be deleted.");
-    } finally {
-      setAuthBusy(false);
-    }
-  }
-
-  async function chooseRoom(roomId: string, source: "recommendation" | "room_detail") {
-    setSelectedRoomId(roomId);
-    setSelectionMessage(null);
-    if (!isRealApi || !data?.authenticated) return;
-    const recommendationRequestId = source === "recommendation" ? data.recommendations.request_id : null;
-    try {
-      await recordRoomSelection(roomId, recommendationRequestId, source);
-      setSelectionMessage("Choice saved for preference learning.");
-      await refresh(request);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Room choice could not be saved.";
-      const roomName = data.rooms.find((room) => room.room_id === roomId)?.name ?? roomId;
-      setOutbox((items) => [
-        { id: `${Date.now()}-${roomId}`, roomId, roomName, source, recommendationRequestId, message },
-        ...items,
-      ].slice(0, 4));
-      setSelectionMessage(`${message} Saved to retry queue.`);
-    }
-  }
-
-  async function retrySelection(item: FailedSelection) {
-    try {
-      await recordRoomSelection(item.roomId, item.recommendationRequestId, item.source);
-      setOutbox((items) => items.filter((entry) => entry.id !== item.id));
-      setSelectionMessage(`Retried and saved ${item.roomName}.`);
-      await refresh(request);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Retry failed.";
-      setOutbox((items) => items.map((entry) => entry.id === item.id ? { ...entry, message } : entry));
+      setBusy(false);
     }
   }
 
   return (
-    <main className="shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">Privacy-preserving AIoT</p>
-          <h1>Study Space Advisor</h1>
-          <p className="privacy-line">No RGB camera, no face or identity recognition, no raw voice storage.</p>
-        </div>
-        <div className="status-stack" aria-live="polite">
-          <StatusPill status={data?.backendStatus ?? (error ? "offline" : "degraded")} />
-          <span className="muted">Updated {formatTime(data?.lastUpdated)}</span>
-          <button className="icon-button" type="button" onClick={() => void refresh()} aria-label="Refresh dashboard" title="Refresh dashboard">
-            Refresh
-          </button>
+    <main className="auth-page">
+      <header className="auth-topbar">
+        <Brand />
+        <div className="auth-top-actions">
+          <span className="privacy-mini">
+            <ShieldCheck size={16} aria-hidden="true" />
+            {choose("隐私保护学习空间", "Privacy-preserving study spaces")}
+          </span>
+          <LanguageToggle />
         </div>
       </header>
-      <nav className="view-switch" aria-label="Dashboard view">
-        <button type="button" className={viewMode === "student" ? "active" : ""} onClick={() => setViewMode("student")}>
-          Student view
-        </button>
-        <button type="button" className={viewMode === "admin" ? "active" : ""} onClick={() => setViewMode("admin")}>
-          Admin view
-        </button>
-      </nav>
-
-      {error && data && <Notice tone="danger" text={`Backend connection failed; showing last successful data. ${error}`} />}
-      {viewMode === "admin" && data?.recommendations.warnings.length ? <Notice tone="warning" text={data.recommendations.warnings.join(", ")} /> : null}
-      {loading && !data ? <Skeleton /> : null}
-      {isRealApi && viewMode === "student" ? (
-        <SessionPanel
-          user={data?.user ?? null}
-          busy={authBusy}
-          message={authMessage}
-          preferences={data?.preferences ?? null}
-          history={data?.selectionHistory ?? null}
-          outbox={outbox}
-          onAuth={handleAuth}
-          onLogout={handleLogout}
-          onLearningToggle={handleLearningToggle}
-          onResetLearned={handleResetLearned}
-          onDeleteSelections={handleDeleteSelections}
-          onDeleteAccount={handleDeleteAccount}
-          onRetrySelection={retrySelection}
-        />
-      ) : null}
-
-      {data && viewMode === "student" ? (
-        <div className="workspace">
-          <PreferencesPanel request={request} saved={saved} profileLabel={data.authenticated ? "Signed-in profile" : "Anonymous demo profile"} onApply={applyRequest} />
-          <section className="recommendation-zone" aria-label="Room recommendations">
-            <RecommendationList
-              recommendations={data.recommendations.recommendations}
-              rooms={data.rooms}
-              selectedRoomId={selectedRoom?.room_id ?? ""}
-              onSelect={setSelectedRoomId}
-            />
-            {selectedRoom ? (
-              <RoomDetail
-                room={selectedRoom}
-                recommendation={selectedRecommendation}
-                history={data.histories[selectedRoom.room_id]?.points ?? []}
-                thermalPreview={isRealApi ? liveSnapshot?.thermal_preview : data.thermalPreviews[selectedRoom.room_id]}
-                sensorRoom={isRealApi ? liveSnapshot?.room ?? null : selectedRoom}
-                soundPreview={isRealApi ? soundPreview : null}
-                sensorError={isRealApi ? liveSensorError : null}
-                liveMode={isRealApi}
-                selectionMessage={selectionMessage}
-                onChoose={data.authenticated ? (roomId) => void chooseRoom(roomId, selectedRecommendation ? "recommendation" : "room_detail") : undefined}
-              />
-            ) : (
-              <EmptyState />
-            )}
-          </section>
+      <section className="auth-stage">
+        <div className="auth-intro">
+          <p className="overline">STUDY SPACE ADVISOR</p>
+          <h1>{choose("找到更适合你的学习空间", "Find a study space that works for you")}</h1>
+          <p>{choose(
+            "根据房间状态和你的偏好提供简单、清晰的建议。无需摄像头，也不记录原始语音。",
+            "Get clear recommendations based on room conditions and your preferences, without cameras or stored audio.",
+          )}</p>
+          <div className="auth-trust">
+            <span><ShieldCheck size={18} />{choose("无身份识别", "No identity recognition")}</span>
+            <span><Wifi size={18} />{choose("实时空间状态", "Live room status")}</span>
+          </div>
         </div>
-      ) : null}
-      {data && viewMode === "admin" && !adminAuthenticated ? <AdminLogin onLogin={() => setAdminAuthenticated(true)} /> : null}
-      {data && viewMode === "admin" && adminAuthenticated ? (
-        <AdminDashboard
-          data={data}
-          onSelectRoom={setSelectedRoomId}
-          onOpenStudent={() => setViewMode("student")}
-          onSignOut={() => {
-            window.sessionStorage.removeItem("study-space-admin-auth");
-            setAdminAuthenticated(false);
-          }}
-        />
-      ) : null}
+        <section className="auth-panel" aria-label={choose("账户登录", "Account sign in")}>
+          <div className="auth-role-switch" aria-label={choose("账户类型", "Account type")}>
+            <button type="button" className={role === "student" ? "active" : ""} onClick={() => switchRole("student")}>
+              {choose("普通用户", "Student")}
+            </button>
+            <button type="button" className={role === "admin" ? "active" : ""} onClick={() => switchRole("admin")}>
+              {choose("管理员", "Administrator")}
+            </button>
+          </div>
+          <div className="auth-heading">
+            <div className="auth-icon">{role === "admin" ? <Settings /> : <UserCircle />}</div>
+            <div>
+              <h2>{mode === "register"
+                ? choose("创建账户", "Create an account")
+                : role === "admin"
+                  ? choose("管理员登录", "Administrator sign in")
+                  : choose("欢迎回来", "Welcome back")}</h2>
+              <p>{mode === "register"
+                ? choose("创建你的个人偏好档案", "Create your personal study preference profile")
+                : choose("登录后继续查看推荐", "Sign in to view your recommendations")}</p>
+            </div>
+          </div>
+          <form onSubmit={(event) => void submit(event)}>
+            <label>
+              {choose("用户名", "Username")}
+              <input
+                value={username}
+                onChange={(event) => setUsername(event.currentTarget.value)}
+                autoComplete="username"
+                minLength={3}
+                placeholder={choose("请输入用户名", "Enter your username")}
+                required
+              />
+            </label>
+            <label>
+              {choose("密码", "Password")}
+              <input
+                value={password}
+                onChange={(event) => setPassword(event.currentTarget.value)}
+                autoComplete={mode === "register" ? "new-password" : "current-password"}
+                minLength={8}
+                placeholder={choose("至少 8 个字符", "At least 8 characters")}
+                type="password"
+                required
+              />
+            </label>
+            {message ? <p className="form-message error" role="alert">{message}</p> : null}
+            <button type="submit" className="primary-button auth-submit" disabled={busy}>
+              {busy ? <RefreshCw className="spin" size={18} /> : <LogIn size={18} />}
+              {mode === "register" ? choose("创建并登录", "Create account and sign in") : choose("登录", "Sign in")}
+            </button>
+          </form>
+          {role === "student" ? (
+            <button type="button" className="text-button" onClick={() => setMode(mode === "login" ? "register" : "login")}>
+              {mode === "login"
+                ? choose("还没有账户？创建用户", "New here? Create an account")
+                : choose("已有账户？返回登录", "Already have an account? Sign in")}
+            </button>
+          ) : null}
+          {!isRealApi ? (
+            <button type="button" className="demo-fill" onClick={fillDemo}>
+              {role === "admin"
+                ? choose("填入管理员演示账户", "Use administrator demo account")
+                : choose("填入学生演示账户", "Use student demo account")}
+            </button>
+          ) : null}
+        </section>
+      </section>
     </main>
   );
 }
 
-function SessionPanel({
+function StudentApp({
   user,
-  busy,
-  message,
-  preferences,
-  history,
-  outbox,
-  onAuth,
-  onLogout,
-  onLearningToggle,
-  onResetLearned,
-  onDeleteSelections,
-  onDeleteAccount,
-  onRetrySelection,
+  data,
+  request,
+  weather,
+  weatherError,
+  error,
+  refreshing,
+  onRefresh,
+  onSavePreferences,
+  onSignOut,
 }: {
-  user: DashboardData["user"];
-  busy: boolean;
-  message: string | null;
-  preferences: DashboardData["preferences"];
-  history: DashboardData["selectionHistory"];
-  outbox: FailedSelection[];
-  onAuth: (mode: "login" | "register", username: string, password: string) => Promise<void>;
-  onLogout: () => Promise<void>;
-  onLearningToggle: (enabled: boolean) => Promise<void>;
-  onResetLearned: () => Promise<void>;
-  onDeleteSelections: () => Promise<void>;
-  onDeleteAccount: () => Promise<void>;
-  onRetrySelection: (item: FailedSelection) => Promise<void>;
+  user: UserResponse;
+  data: DashboardData;
+  request: RecommendationRequest;
+  weather: WeatherInfo | null;
+  weatherError: boolean;
+  error: string | null;
+  refreshing: boolean;
+  onRefresh: () => void;
+  onSavePreferences: (request: RecommendationRequest) => Promise<void>;
+  onSignOut: () => void;
 }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const { choose } = useLanguage();
+  const [page, setPage] = useState<StudentPage>("home");
+  const [selectedRoomId, setSelectedRoomId] = useState("");
+  const [mobileMenu, setMobileMenu] = useState(false);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await submitAuth("login");
+  function navigate(nextPage: StudentPage) {
+    setPage(nextPage);
+    setMobileMenu(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function submitAuth(mode: "login" | "register") {
-    await onAuth(mode, username.trim(), password);
+  function openRoom(roomId: string) {
+    setSelectedRoomId(roomId);
+    navigate("rooms");
+  }
+
+  function selectRoom(roomId: string) {
+    setSelectedRoomId(roomId);
+    window.scrollTo({ top: 0, behavior: "auto" });
   }
 
   return (
-    <section className="session-panel" aria-label="Student account">
-      <div>
-        <p className="eyebrow">Student account</p>
-        <h2>{user ? `Welcome, ${user.username}` : "Sign in for learned preferences"}</h2>
-        <p className="muted">The backend now stores only local account credentials, preference settings, and room choices for recommendation learning.</p>
-      </div>
-      {user ? (
-        <div className="session-actions">
-          <div className="session-toolbar">
-            <span className="save-state">Session active</span>
-            <button type="button" disabled={busy} onClick={() => void onLogout()}>
-              Sign out
-            </button>
-          </div>
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={preferences?.learning_enabled ?? true}
-              disabled={busy}
-              onChange={(event) => void onLearningToggle(event.currentTarget.checked)}
-            />
-            Preference learning
-          </label>
-          {preferences ? <PreferenceEvidence preferences={preferences} /> : null}
-          <div className="button-row">
-            <button type="button" disabled={busy} onClick={() => void onResetLearned()}>
-              Reset learned
-            </button>
-            <button type="button" disabled={busy} onClick={() => void onDeleteSelections()}>
-              Clear choices
-            </button>
-            <button type="button" disabled={busy} onClick={() => void onDeleteAccount()}>
-              Delete account
-            </button>
-          </div>
+    <div className="product-shell">
+      <header className="product-header">
+        <Brand />
+        <nav className="desktop-nav" aria-label={choose("主要菜单", "Primary navigation")}>
+          <StudentNav page={page} onNavigate={navigate} />
+        </nav>
+        <div className="header-actions">
+          <LanguageToggle />
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={choose("刷新数据", "Refresh data")}
+            title={choose("刷新数据", "Refresh data")}
+            onClick={onRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw className={refreshing ? "spin" : ""} size={18} />
+          </button>
+          <button type="button" className="account-chip" onClick={() => navigate("account")}>
+            <UserCircle size={18} />
+            {user.username}
+          </button>
+          <button type="button" className="icon-button mobile-menu-button" aria-label={choose("打开菜单", "Open menu")} onClick={() => setMobileMenu((value) => !value)}>
+            {mobileMenu ? <X size={20} /> : <Menu size={20} />}
+          </button>
         </div>
-      ) : (
-        <form className="session-form" onSubmit={(event) => void submit(event)}>
-          <label>
-            Username
-            <input value={username} autoComplete="username" onChange={(event) => setUsername(event.currentTarget.value)} placeholder="studyuser" />
-          </label>
-          <label>
-            Password
-            <input value={password} autoComplete="current-password" onChange={(event) => setPassword(event.currentTarget.value)} placeholder="10+ characters" type="password" />
-          </label>
-          <div className="button-row">
-            <button type="submit" className="primary" disabled={busy}>
-              Sign in
-            </button>
-            <button type="button" disabled={busy} onClick={() => void submitAuth("register")}>
-              Register
-            </button>
+      </header>
+      {mobileMenu ? (
+        <nav className="mobile-menu" aria-label={choose("移动端菜单", "Mobile navigation")}>
+          <StudentNav page={page} onNavigate={navigate} />
+        </nav>
+      ) : null}
+      {error ? <StatusBanner text={error} /> : null}
+      <main className="page-content">
+        {page === "home" ? <HomeView user={user} data={data} weather={weather} weatherError={weatherError} onOpenRoom={openRoom} /> : null}
+        {page === "rooms" ? <RoomsView data={data} selectedRoomId={selectedRoomId} onSelectRoom={selectRoom} /> : null}
+        {page === "preferences" ? <PreferencesView request={request} busy={refreshing} onSave={onSavePreferences} /> : null}
+        {page === "account" ? <AccountView user={user} preferences={data.preferences ?? null} onSignOut={onSignOut} /> : null}
+      </main>
+      <nav className="mobile-bottom-nav" aria-label={choose("底部导航", "Bottom navigation")}>
+        <StudentNav page={page} onNavigate={navigate} compact />
+      </nav>
+    </div>
+  );
+}
+
+function StudentNav({
+  page,
+  onNavigate,
+  compact = false,
+}: {
+  page: StudentPage;
+  onNavigate: (page: StudentPage) => void;
+  compact?: boolean;
+}) {
+  const { choose } = useLanguage();
+  const items: Array<{ id: StudentPage; label: string; icon: ReactNode }> = [
+    { id: "home", label: choose("首页", "Home"), icon: <Home size={18} /> },
+    { id: "rooms", label: choose("教室", "Rooms"), icon: <DoorOpen size={18} /> },
+    { id: "preferences", label: choose("偏好", "Preferences"), icon: <SlidersHorizontal size={18} /> },
+    { id: "account", label: choose("账户", "Account"), icon: <UserCircle size={18} /> },
+  ];
+  return (
+    <>
+      {items.map((item) => (
+        <button key={item.id} type="button" className={page === item.id ? "active" : ""} onClick={() => onNavigate(item.id)}>
+          {item.icon}
+          <span>{item.label}</span>
+          {!compact && page === item.id ? <span className="nav-dot" aria-hidden="true" /> : null}
+        </button>
+      ))}
+    </>
+  );
+}
+
+function HomeView({
+  user,
+  data,
+  weather,
+  weatherError,
+  onOpenRoom,
+}: {
+  user: UserResponse;
+  data: DashboardData;
+  weather: WeatherInfo | null;
+  weatherError: boolean;
+  onOpenRoom: (roomId: string) => void;
+}) {
+  const { language, locale, choose } = useLanguage();
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const dateText = new Intl.DateTimeFormat(locale, { year: "numeric", month: "long", day: "numeric" }).format(now);
+  const weekdayText = new Intl.DateTimeFormat(locale, { weekday: "long" }).format(now);
+  const recommendations = data.recommendations.recommendations.slice(0, 3);
+
+  return (
+    <>
+      <section className="welcome-hero" aria-labelledby="welcome-title">
+        <div className="welcome-copy">
+          <p className="hero-kicker">TODAY ON CAMPUS</p>
+          <h1 id="welcome-title">{greeting(now, language)}{language === "zh" ? "，" : ", "}{user.username}</h1>
+          <p className="welcome-lead">{choose("先找到合适的空间，再开始今天的专注。", "Find the right space, then give your work your full attention.")}</p>
+          <blockquote>{dailyQuote(now, language)}</blockquote>
+        </div>
+        <div className="clock-block" aria-label={choose("当前时间", "Current time")}>
+          <strong>{new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(now)}</strong>
+          <span>{choose("本地时间", "Local time")}</span>
+        </div>
+      </section>
+
+      <section className="today-facts" aria-label={choose("今日信息", "Today's information")}>
+        <InfoTile icon={<CalendarDays />} label={choose("日期", "Date")} value={dateText} detail={weekdayText} />
+        <InfoTile
+          icon={<CloudSun />}
+          label={choose("天气", "Weather")}
+          value={weather
+            ? `${Math.round(weather.temperatureC)}°C · ${weatherDescription(weather.weatherCode, language)}`
+            : weatherError
+              ? choose("暂时无法获取", "Temporarily unavailable")
+              : choose("正在获取", "Loading")}
+          detail={weather
+            ? `${weather.locationLabel} · ${choose("体感", "Feels like")} ${Math.round(weather.apparentTemperatureC)}°C · ${choose("湿度", "Humidity")} ${weather.humidityPercent}%${weather.isCached ? choose(" · 最近更新", " · Last available") : ""}`
+            : choose("实时天气由新加坡国家环境局提供", "Live weather data from Singapore's NEA")}
+        />
+        <InfoTile
+          icon={<ShieldCheck />}
+          label={choose("隐私", "Privacy")}
+          value={choose("只分析空间，不识别个人", "Room-level analysis only; no identity recognition")}
+          detail={choose("无 RGB 摄像头，不保存原始语音", "No RGB cameras and no stored raw audio")}
+        />
+      </section>
+
+      <section className="home-recommendations" aria-labelledby="recommendation-heading">
+        <div className="section-heading">
+          <div>
+            <p className="overline">BASED ON YOUR PREFERENCES</p>
+            <h2 id="recommendation-heading">{choose("为你推荐", "Recommended for you")}</h2>
           </div>
-        </form>
-      )}
-      {user && history?.selections.length ? <SelectionHistory selections={history.selections} /> : null}
-      {outbox.length ? <SelectionOutbox items={outbox} busy={busy} onRetry={onRetrySelection} /> : null}
-      {message ? <p className="inline-note">{message}</p> : null}
+          <span className="section-note">{choose("已结合你的学习偏好", "Personalised using your study preferences")}</span>
+        </div>
+        {recommendations.length ? (
+          <div className="recommendation-list">
+            {recommendations.map((item, index) => {
+              const room = data.rooms.find((entry) => entry.room_id === item.room_id);
+              return room ? <RecommendationCard key={item.room_id} room={room} item={item} featured={index === 0} onOpen={() => onOpenRoom(room.room_id)} /> : null;
+            })}
+          </div>
+        ) : (
+          <EmptyPanel
+            title={choose("暂时没有可推荐的教室", "No room recommendations yet")}
+            detail={choose("新的空间状态到达后，推荐会自动更新。", "Recommendations will update when new room data arrives.")}
+          />
+        )}
+      </section>
+    </>
+  );
+}
+
+function InfoTile({ icon, label, value, detail }: { icon: ReactNode; label: string; value: string; detail: string }) {
+  return (
+    <article className="info-tile">
+      <div className="tile-icon">{icon}</div>
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <small>{detail}</small>
+      </div>
+    </article>
+  );
+}
+
+function RecommendationCard({
+  room,
+  item,
+  featured,
+  onOpen,
+}: {
+  room: RoomStatus;
+  item: RecommendationItem;
+  featured: boolean;
+  onOpen: () => void;
+}) {
+  const { language, choose } = useLanguage();
+  const catalog = catalogFor(room, language);
+  return (
+    <article className={`recommendation-card ${featured ? "featured" : ""}`}>
+      <div className="recommendation-rank">
+        {featured ? choose("首选", "Top choice") : `${choose("备选", "Alternative")} ${item.rank}`}
+      </div>
+      <div className="recommendation-main">
+        <div>
+          <span className={`state-dot ${stateTone(room.room_state)}`}>{roomStateText[room.room_state][language]}</span>
+          <h3>{catalog.displayName}</h3>
+          <p>{catalog.shortLocation}</p>
+        </div>
+        <span className={`fit-label ${fitTone(item.score)}`}>{qualitativeFit(item.score, language)}</span>
+      </div>
+      <div className="reason-row">
+        <span>{occupancyText[room.occupancy_level][language]}</span>
+        <span>{forecastText(item.forecast_30m, language)}</span>
+        {item.is_stale
+          ? <span>{choose("建议到场确认", "Verify on arrival")}</span>
+          : <span>{choose("状态刚刚更新", "Updated just now")}</span>}
+      </div>
+      <button type="button" className="card-link" onClick={onOpen}>
+        {choose("查看教室", "View room")}
+        <ArrowRight size={17} />
+      </button>
+    </article>
+  );
+}
+
+function RoomsView({
+  data,
+  selectedRoomId,
+  onSelectRoom,
+}: {
+  data: DashboardData;
+  selectedRoomId: string;
+  onSelectRoom: (roomId: string) => void;
+}) {
+  const { language, choose } = useLanguage();
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "quiet" | "discussion" | "available">("all");
+  const selectedRoom = data.rooms.find((room) => room.room_id === selectedRoomId) ?? null;
+  const selectedRecommendation = data.recommendations.recommendations.find((item) => item.room_id === selectedRoom?.room_id);
+  const filtered = data.rooms.filter((room) => {
+    const catalog = catalogFor(room, language);
+    const matchesQuery = `${catalog.displayName} ${catalog.shortLocation} ${catalog.address}`.toLowerCase().includes(query.toLowerCase());
+    const matchesFilter =
+      filter === "all" ||
+      (filter === "quiet" && ["quiet_study_recommended", "empty_or_low_activity"].includes(room.room_state)) ||
+      (filter === "discussion" && room.room_state === "discussion_allowed") ||
+      (filter === "available" && ["empty", "low"].includes(room.occupancy_level) && !room.is_stale);
+    return matchesQuery && matchesFilter;
+  });
+
+  if (selectedRoom) {
+    return <StudentRoomDetail room={selectedRoom} recommendation={selectedRecommendation ?? null} onBack={() => onSelectRoom("")} />;
+  }
+
+  return (
+    <section className="rooms-page">
+      <PageTitle
+        eyebrow="CAMPUS SPACES"
+        title={choose("发现教室", "Explore study rooms")}
+        detail={choose("先浏览空间与位置，点开后再查看与你偏好的匹配情况。", "Browse spaces and locations first, then open a room to see how well it matches your preferences.")}
+      />
+      <div className="room-tools">
+        <label className="search-field">
+          <Search size={18} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.currentTarget.value)}
+            placeholder={choose("搜索教室、楼层或地址", "Search by room, level or address")}
+            aria-label={choose("搜索教室", "Search rooms")}
+          />
+        </label>
+        <div className="filter-tabs" aria-label={choose("教室筛选", "Room filters")}>
+          {(["all", "available", "quiet", "discussion"] as const).map((value) => (
+            <button key={value} type="button" className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>
+              {value === "all"
+                ? choose("全部", "All")
+                : value === "available"
+                  ? choose("空位充足", "Seats available")
+                  : value === "quiet"
+                    ? choose("安静学习", "Quiet study")
+                    : choose("小组讨论", "Group discussion")}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="room-card-grid">
+        {filtered.map((room) => {
+          const catalog = catalogFor(room, language);
+          const recommendation = data.recommendations.recommendations.find((item) => item.room_id === room.room_id) ?? null;
+          return (
+            <button key={room.room_id} type="button" className="room-card" onClick={() => onSelectRoom(room.room_id)}>
+              <span className="room-card-media">
+                <img src={catalog.image} alt={`${catalog.displayName} ${choose("教室", "room")}`} />
+                <span className={`room-card-state ${stateTone(room.room_state)}`}>{roomStateText[room.room_state][language]}</span>
+              </span>
+              <span className="room-card-body">
+                <span className="room-card-heading">
+                  <strong>{catalog.displayName}</strong>
+                  <ArrowRight size={18} />
+                </span>
+                <span className="room-card-location"><MapPin size={14} />{catalog.shortLocation}</span>
+                <span className="room-card-meta">
+                  <span><Clock3 size={14} />{catalog.openingHours}</span>
+                  <em className={fitTone(recommendation?.score ?? 0)}>
+                    {recommendation
+                      ? qualitativeFit(recommendation.score, language)
+                      : choose("等待匹配", "Match pending")}
+                  </em>
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {!filtered.length ? (
+        <EmptyPanel
+          title={choose("没有找到匹配的教室", "No matching rooms found")}
+          detail={choose("可以换一个关键词或筛选条件。", "Try a different search term or filter.")}
+        />
+      ) : null}
     </section>
   );
 }
 
-function PreferenceEvidence({ preferences }: { preferences: NonNullable<DashboardData["preferences"]> }) {
-  const counts = preferences.evidence_counts;
-  const total = counts.quiet_priority + counts.low_occupancy_priority + counts.brightness_priority + counts.comfort_priority;
+function StudentRoomDetail({
+  room,
+  recommendation,
+  onBack,
+}: {
+  room: RoomStatus;
+  recommendation: RecommendationItem | null;
+  onBack: () => void;
+}) {
+  const { language, choose } = useLanguage();
+  const catalog = catalogFor(room, language);
+  const fit = recommendation ? qualitativeFit(recommendation.score, language) : choose("可以作为备选", "Suitable as an alternative");
   return (
-    <div className="learning-strip">
-      <span>Evidence {total}</span>
-      <span>Quiet {formatMaybe(preferences.learned.quiet_priority)}</span>
-      <span>Crowd {formatMaybe(preferences.learned.low_occupancy_priority)}</span>
-      <span>Light {formatMaybe(preferences.learned.brightness_priority)}</span>
-      <span>Comfort {formatMaybe(preferences.learned.comfort_priority)}</span>
-    </div>
+    <section className="student-room-detail" aria-label={`${catalog.displayName} ${choose("详情", "details")}`}>
+      <button type="button" className="detail-back" onClick={onBack}>
+        <ArrowLeft size={18} />
+        {choose("返回全部教室", "Back to all rooms")}
+      </button>
+      <div className="room-detail-hero">
+        <img src={catalog.image} alt={`${catalog.displayName} ${choose("教室内部", "interior")}`} />
+        <div className="room-detail-overlay">
+          <span className={`state-dot ${stateTone(room.room_state)}`}>{roomStateText[room.room_state][language]}</span>
+          <h1>{catalog.displayName}</h1>
+          <p>{catalog.shortLocation}</p>
+        </div>
+      </div>
+      <div className="room-detail-grid">
+        <div className="room-detail-main">
+          <section className="room-match-panel">
+            <div className="room-match-heading">
+              <div><span>{choose("与你的偏好匹配度", "Match with your preferences")}</span><strong>{fit}</strong></div>
+              <span className={`fit-orbit ${fitTone(recommendation?.score ?? 0)}`}><CheckCircle2 size={22} /></span>
+            </div>
+            <div className="match-meter" role="progressbar" aria-label={choose("个人偏好匹配度", "Preference match")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={recommendation?.score ?? 0}>
+              <span style={{ width: `${recommendation?.score ?? 0}%` }} />
+            </div>
+            <p>{qualitativeSummary(room, recommendation, language)}</p>
+          </section>
+          <section className="room-current-panel">
+            <SectionBar
+              title={choose("当前教室状态", "Current room status")}
+              detail={choose("只展示适合学生决策的定性结果", "Qualitative guidance for student decisions")}
+            />
+            <dl className="student-status-list">
+              <div><dt>{choose("当前空间", "Current occupancy")}</dt><dd>{occupancyText[room.occupancy_level][language]}</dd></div>
+              <div><dt>{choose("综合判断", "Overall assessment")}</dt><dd>{roomStateText[room.room_state][language]}</dd></div>
+              <div><dt>{choose("未来半小时", "Next 30 minutes")}</dt><dd>{forecastText(recommendation?.forecast_30m ?? "unknown", language)}</dd></div>
+              <div><dt>{choose("数据状态", "Data status")}</dt><dd>{room.is_stale ? choose("建议到场确认", "Verify on arrival") : choose("刚刚更新", "Updated just now")}</dd></div>
+            </dl>
+          </section>
+          <section className="room-amenities">
+            <h2>{choose("空间设施", "Amenities")}</h2>
+            <div>{catalog.amenities.map((amenity) => <span key={amenity}>{amenity}</span>)}</div>
+          </section>
+        </div>
+        <aside className="room-facts">
+          <div><MapPin /><span><small>{choose("具体位置", "Location")}</small><strong>{catalog.address}</strong></span></div>
+          <div><Clock3 /><span><small>{choose("开放时间", "Opening hours")}</small><strong>{catalog.openingHours}</strong></span></div>
+          <div><Users /><span><small>{choose("空间类型", "Space type")}</small><strong>{catalog.capacity}</strong></span></div>
+          <div><DoorOpen /><span><small>{choose("访问方式", "Access")}</small><strong>{catalog.accessNote}</strong></span></div>
+          <a href={catalog.mapUrl} target="_blank" rel="noreferrer">{choose("在地图中查看", "View on map")}<ExternalLink size={16} /></a>
+          <p>{choose(
+            "开放时间与预约状态可能因课表、假期和活动调整，请以 uNivUS 或现场信息为准。",
+            "Opening hours and booking availability may change with timetables, holidays and events. Check uNivUS or on-site notices before visiting.",
+          )}</p>
+        </aside>
+      </div>
+      <div className="privacy-note">
+        <ShieldCheck size={20} />
+        <p>{choose(
+          "这里只展示整体空间判断。系统不使用 RGB 摄像头，也不会识别或跟踪个人。",
+          "Only room-level assessments are shown. The system does not use RGB cameras or identify or track individuals.",
+        )}</p>
+      </div>
+    </section>
   );
 }
 
-function SelectionHistory({ selections }: { selections: NonNullable<DashboardData["selectionHistory"]>["selections"] }) {
-  return (
-    <div className="history-strip" aria-label="Recent room selections">
-      <strong>Recent choices</strong>
-      {selections.slice(0, 4).map((selection) => (
-        <span key={selection.selection_id}>
-          {selection.room_name}
-          <small>{selection.selected_rank ? `#${selection.selected_rank}` : selection.source}</small>
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function SelectionOutbox({ items, busy, onRetry }: { items: FailedSelection[]; busy: boolean; onRetry: (item: FailedSelection) => Promise<void> }) {
-  return (
-    <div className="outbox" aria-label="Retry queue">
-      <strong>Retry queue</strong>
-      {items.map((item) => (
-        <span key={item.id}>
-          {item.roomName}
-          <small>{item.message}</small>
-          <button type="button" disabled={busy} onClick={() => void onRetry(item)}>
-            Retry
-          </button>
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function PreferencesPanel({
+function PreferencesView({
   request,
-  saved,
-  profileLabel,
-  onApply,
+  busy,
+  onSave,
 }: {
   request: RecommendationRequest;
-  saved: boolean;
-  profileLabel: string;
-  onApply: (request: RecommendationRequest) => void;
+  busy: boolean;
+  onSave: (request: RecommendationRequest) => Promise<void>;
 }) {
+  const { language, choose } = useLanguage();
   const [draft, setDraft] = useState(request);
-  const hasLocation = false;
+  const [saved, setSaved] = useState(false);
+  useEffect(() => setDraft(request), [request]);
 
-  function setMode(study_mode: StudyMode) {
-    setDraft({ ...draft, study_mode });
+  function setPriority(key: keyof RecommendationRequest["preferences"], value: number) {
+    setDraft((current) => ({ ...current, preferences: { ...current.preferences, [key]: value } }));
   }
 
-  function setPreference(key: keyof RecommendationRequest["preferences"], value: number) {
-    setDraft({ ...draft, preferences: { ...draft.preferences, [key]: value } });
-  }
-
-  function reset() {
-    setDraft({ ...defaultRequest, candidate_room_ids: allCandidateIds() });
+  async function save() {
+    await onSave(draft);
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 1800);
   }
 
   return (
-    <aside className="preferences" aria-label="Study preferences">
-      <div className="panel-heading">
-        <h2>Preferences</h2>
-        <span className="save-state">{saved ? "Saved" : profileLabel}</span>
-      </div>
-      <fieldset className="segmented">
-        <legend>Study mode</legend>
-        {(["quiet", "discussion", "any"] as StudyMode[]).map((mode) => (
-          <button key={mode} type="button" className={draft.study_mode === mode ? "active" : ""} onClick={() => setMode(mode)}>
-            {labels[mode]}
+    <section className="preferences-page">
+      <PageTitle
+        eyebrow="PERSONAL PREFERENCES"
+        title={choose("个人偏好设置", "Personal preferences")}
+        detail={choose("这些数值会保存在你的账户中，并用于重新排列首页推荐。", "These settings are saved to your account and used to rank your home-page recommendations.")}
+      />
+      <div className="preference-form">
+        <section className="preference-section">
+          <h2>{choose("你今天想怎么学习？", "How would you like to study today?")}</h2>
+          <div className="mode-options">
+            {([
+              ["quiet", choose("安静学习", "Quiet study"), choose("更看重安静、低占用的空间", "Prioritise quiet, less occupied spaces"), BookOpen],
+              ["discussion", choose("小组讨论", "Group discussion"), choose("优先寻找允许交流的空间", "Prioritise spaces where conversation is appropriate"), UserCircle],
+              ["any", choose("都可以", "No preference"), choose("根据当前状态综合推荐", "Recommend based on current overall conditions"), DoorOpen],
+            ] as const).map(([value, title, detail, Icon]) => (
+              <button
+                key={value}
+                type="button"
+                className={draft.study_mode === value ? "selected" : ""}
+                onClick={() => setDraft((current) => ({ ...current, study_mode: value as StudyMode }))}
+              >
+                <Icon size={22} />
+                <span><strong>{title}</strong><small>{detail}</small></span>
+                {draft.study_mode === value ? <CheckCircle2 size={19} /> : null}
+              </button>
+            ))}
+          </div>
+        </section>
+        <section className="preference-section">
+          <h2>{choose("你更在意什么？", "What matters most to you?")}</h2>
+          <p>{choose("拖动滑块即可，推荐会在保存后更新。", "Adjust the sliders; recommendations update after you save.")}</p>
+          <PreferenceSlider label={choose("安静程度", "Quietness")} detail={choose("更少交谈与环境噪声", "Less conversation and ambient noise")} value={draft.preferences.quiet_priority} onChange={(value) => setPriority("quiet_priority", value)} />
+          <PreferenceSlider label={choose("空闲程度", "Seat availability")} detail={choose("更偏好人少、容易找到座位", "Prefer spaces with fewer people and easier seating")} value={draft.preferences.low_occupancy_priority} onChange={(value) => setPriority("low_occupancy_priority", value)} />
+          <PreferenceSlider label={choose("光线明亮", "Brightness")} detail={choose("更偏好明亮的学习环境", "Prefer a well-lit study environment")} value={draft.preferences.brightness_priority} onChange={(value) => setPriority("brightness_priority", value)} />
+          <PreferenceSlider label={choose("温湿度舒适", "Thermal comfort")} detail={choose("更看重环境体感", "Prioritise comfortable temperature and humidity")} value={draft.preferences.comfort_priority} onChange={(value) => setPriority("comfort_priority", value)} />
+          <PreferenceSlider label={choose("距离更近", "Proximity")} detail={choose("位置数据可用时参与推荐", "Used when location data is available")} value={draft.preferences.distance_priority} onChange={(value) => setPriority("distance_priority", value)} />
+        </section>
+        <div className="preference-actions">
+          <span>{saved
+            ? choose("已保存，首页推荐已更新", "Saved. Your home-page recommendations have been updated.")
+            : choose("偏好仅与你的账户关联", "Preferences are linked only to your account")}</span>
+          <button type="button" className="primary-button" onClick={() => void save()} disabled={busy}>
+            {busy ? <RefreshCw className="spin" size={18} /> : <CheckCircle2 size={18} />}
+            {choose("保存偏好", "Save preferences")}
           </button>
-        ))}
-      </fieldset>
-      <Slider label="Quiet priority" value={draft.preferences.quiet_priority} onChange={(value) => setPreference("quiet_priority", value)} />
-      <Slider label="Low occupancy" value={draft.preferences.low_occupancy_priority} onChange={(value) => setPreference("low_occupancy_priority", value)} />
-      <Slider label="Brightness" value={draft.preferences.brightness_priority} onChange={(value) => setPreference("brightness_priority", value)} />
-      <Slider label="Temperature and humidity" value={draft.preferences.comfort_priority} onChange={(value) => setPreference("comfort_priority", value)} />
-      <Slider label="Distance" value={draft.preferences.distance_priority} disabled={!hasLocation} onChange={(value) => setPreference("distance_priority", value)} />
-      {!hasLocation ? <p className="inline-note">Distance is disabled because room coordinates are not available in the current backend response.</p> : null}
-      <div className="button-row">
-        <button type="button" className="primary" onClick={() => onApply(draft)}>
-          Apply preferences
-        </button>
-        <button type="button" onClick={reset}>
-          Defaults
-        </button>
+        </div>
       </div>
-    </aside>
+    </section>
   );
 }
 
-function Slider({ label, value, disabled, onChange }: { label: string; value: number; disabled?: boolean; onChange: (value: number) => void }) {
+function PreferenceSlider({
+  label,
+  detail,
+  value,
+  onChange,
+}: {
+  label: string;
+  detail: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const { language } = useLanguage();
   return (
-    <label className="slider-row">
-      <span>
-        {label}
-        <strong>{value.toFixed(1)}</strong>
-      </span>
-      <input disabled={disabled} type="range" min="0" max="1" step="0.1" value={value} onChange={(event) => onChange(Number(event.currentTarget.value))} />
+    <label className="preference-slider">
+      <span><strong>{label}</strong><small>{detail}</small></span>
+      <input type="range" min="0" max="1" step="0.1" value={value} onChange={(event) => onChange(Number(event.currentTarget.value))} />
+      <em>{priorityWord(value, language)}</em>
     </label>
   );
 }
 
-function RecommendationList({
-  recommendations,
-  rooms,
-  selectedRoomId,
-  onSelect,
-}: {
-  recommendations: RecommendationItem[];
-  rooms: RoomStatus[];
-  selectedRoomId: string;
-  onSelect: (roomId: string) => void;
-}) {
-  if (!recommendations.length) return <EmptyState />;
-  const roomMap = new Map(rooms.map((room) => [room.room_id, room]));
-  const [first, ...rest] = recommendations;
-  return (
-    <section className="recommendations">
-      <h2>Recommendations</h2>
-      <FeaturedRecommendation item={first} room={roomMap.get(first.room_id)} selected={selectedRoomId === first.room_id} onSelect={onSelect} />
-      <div className="compact-list">
-        {rest.map((item) => (
-          <RecommendationRow key={item.room_id} item={item} room={roomMap.get(item.room_id)} selected={selectedRoomId === item.room_id} onSelect={onSelect} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function FeaturedRecommendation({ item, room, selected, onSelect }: { item: RecommendationItem; room?: RoomStatus; selected: boolean; onSelect: (roomId: string) => void }) {
-  return (
-    <button className={`featured ${selected ? "selected" : ""}`} type="button" onClick={() => onSelect(item.room_id)}>
-      <span className="rank">#{item.rank}</span>
-      <span>
-        <strong>{room?.name ?? item.room_id}</strong>
-        <small>{room?.location ?? "Unknown location"}</small>
-      </span>
-      <Score value={item.score} />
-      <StateBadges room={room} item={item} />
-      <p>{item.explanation}</p>
-      <small className="explanation-source">
-        {item.explanation_source === "llm" ? "Local LLM explanation" : item.explanation_source === "template" ? "Template explanation" : "Stub fallback"}
-      </small>
-    </button>
-  );
-}
-
-function RecommendationRow({ item, room, selected, onSelect }: { item: RecommendationItem; room?: RoomStatus; selected: boolean; onSelect: (roomId: string) => void }) {
-  return (
-    <button className={`rec-row ${selected ? "selected" : ""}`} type="button" onClick={() => onSelect(item.room_id)}>
-      <span className="rank">#{item.rank}</span>
-      <span className="row-title">
-        <strong>{room?.name ?? item.room_id}</strong>
-        <small>{labels[item.occupancy_level]} occupancy, 30m {labels[item.forecast_30m]}</small>
-      </span>
-      <Score value={item.score} />
-      <StateBadges room={room} item={item} />
-    </button>
-  );
-}
-
-function RoomDetail({
-  room,
-  recommendation,
-  history,
-  thermalPreview,
-  sensorRoom,
-  soundPreview,
-  sensorError,
-  liveMode,
-  selectionMessage,
-  onChoose,
-}: {
-  room: RoomStatus;
-  recommendation?: RecommendationItem;
-  history: HistoryPoint[];
-  thermalPreview?: ThermalPreviewResponse;
-  sensorRoom: RoomStatus | null;
-  soundPreview: SoundPreviewResponse | null;
-  sensorError: string | null;
-  liveMode: boolean;
-  selectionMessage?: string | null;
-  onChoose?: (roomId: string) => void;
-}) {
-  const forecastLabel = recommendation ? labels[recommendation.forecast_30m] : "Unknown";
-  const visibleReasons = recommendation?.reasons.filter((reason) => !reason.toLowerCase().includes("sensor") && !reason.toLowerCase().includes("confidence")).slice(0, 3) ?? [];
-  return (
-    <section className="detail" aria-label={`${room.name} detail`}>
-      <div className="detail-heading">
-        <div>
-          <h2>{room.name}</h2>
-          <p className="muted">{room.location ?? "Unknown location"}</p>
-        </div>
-        <StateBadges room={room} item={recommendation} />
-      </div>
-      <div className="metric-grid">
-        <Metric label="Vibe" value={labels[room.room_state]} />
-        <Metric label="Crowd" value={labels[room.occupancy_level]} />
-        <Metric label="Next 30 min" value={forecastLabel} />
-      </div>
-      {visibleReasons.length ? (
-        <div className="reason-band">
-          {visibleReasons.map((reason) => (
-            <span key={reason}>{reason}</span>
-          ))}
-        </div>
-      ) : null}
-      {room.is_stale ? <Notice tone="warning" text="Live signals for this room may be delayed, so check the space before walking over." /> : null}
-      <SensorTelemetry
-        room={sensorRoom}
-        soundPreview={soundPreview}
-        error={sensorError}
-        liveMode={liveMode}
-      />
-      <div className="split">
-        <TrendChart points={history} />
-        <ThermalPreview preview={thermalPreview} roomId={room.room_id} />
-      </div>
-      {onChoose ? (
-        <div className="selection-action">
-          <button type="button" className="primary" onClick={() => onChoose(room.room_id)}>
-            Choose this room
-          </button>
-          {selectionMessage ? <span className="inline-note">{selectionMessage}</span> : null}
-        </div>
-      ) : null}
-      <PrivacyPanel />
-    </section>
-  );
-}
-
-function SensorTelemetry({
-  room,
-  soundPreview,
-  error,
-  liveMode,
-}: {
-  room: RoomStatus | null;
-  soundPreview: SoundPreviewResponse | null;
-  error: string | null;
-  liveMode: boolean;
-}) {
-  const features = room?.features;
-  const currentSound = liveMode
-    ? soundPreview?.available
-      ? soundPreview.rms
-      : null
-    : features?.sound_rms_mean;
-  const light = features?.light_lux != null
-    ? `${features.light_lux.toFixed(1)} lx`
-    : features?.light_relative_mean != null
-      ? `${(features.light_relative_mean * 100).toFixed(1)}% relative`
-      : "--";
-
-  return (
-    <section className="sensor-telemetry" aria-label="Live sensor readings">
-      <div className="panel-heading">
-        <div>
-          <h3>Sensor readings</h3>
-          <span className="muted">{liveMode ? "Current Raspberry Pi data" : "Mock aggregate data"}</span>
-        </div>
-        <span className={`sensor-link-state ${room ? "ok" : "offline"}`}>{room ? "Current" : "Unavailable"}</span>
-      </div>
-      {error ? <Notice tone="danger" text={`${error} Old sensor values are hidden.`} /> : null}
-      <div className="sensor-metric-grid">
-        <Metric label="Temperature" value={formatReading(features?.temperature_c, "°C", 1)} />
-        <Metric label="Humidity" value={formatReading(features?.humidity_pct, "%", 1)} />
-        <Metric label={features?.light_lux != null ? "Light" : "Relative light"} value={light} />
-        <Metric label="Sound RMS (current)" value={formatPercent(currentSound, 4)} />
-      </div>
-      {room ? (
-        <div className="sensor-health-row" aria-label="Sensor health">
-          {Object.entries(room.sensor_health).map(([sensor, health]) => (
-            <span className={`sensor-chip ${health}`} key={sensor}>
-              {sensor}
-              <small>{health}</small>
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function AdminLogin({ onLogin }: { onLogin: () => void }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (username.trim() === "admin" && password === "admin123") {
-      window.sessionStorage.setItem("study-space-admin-auth", "true");
-      setMessage(null);
-      onLogin();
-      return;
-    }
-    setMessage("Invalid demo credentials. Try admin / admin123.");
-  }
-
-  return (
-    <section className="admin-login" aria-label="Admin login">
-      <div>
-        <p className="eyebrow">Admin access</p>
-        <h2>Sign in to operations console</h2>
-        <p className="muted">Demo credentials protect the admin view during testing. Production auth should be handled by the backend.</p>
-      </div>
-      <form onSubmit={submit}>
-        <label>
-          Username
-          <input value={username} autoComplete="username" onChange={(event) => setUsername(event.currentTarget.value)} placeholder="admin" />
-        </label>
-        <label>
-          Password
-          <input value={password} autoComplete="current-password" onChange={(event) => setPassword(event.currentTarget.value)} placeholder="admin123" type="password" />
-        </label>
-        {message ? (
-          <p className="login-error" role="alert">
-            {message}
-          </p>
-        ) : (
-          <p className="inline-note">Demo access: admin / admin123</p>
-        )}
-        <button type="submit" className="primary">
-          Sign in
-        </button>
-      </form>
-    </section>
-  );
-}
-
-function AdminDashboard({
-  data,
-  onSelectRoom,
-  onOpenStudent,
+function AccountView({
+  user,
+  preferences,
   onSignOut,
 }: {
-  data: DashboardData;
-  onSelectRoom: (roomId: string) => void;
-  onOpenStudent: () => void;
+  user: UserResponse;
+  preferences: MePreferenceResponse | null;
   onSignOut: () => void;
 }) {
-  const rooms = data.rooms;
-  const staleRooms = rooms.filter((room) => room.is_stale);
-  const offlineSensors = rooms.flatMap((room) => Object.entries(room.sensor_health).filter(([, health]) => health === "offline").map(([name]) => `${room.name} ${name}`));
-  const degradedSensors = rooms.flatMap((room) => Object.entries(room.sensor_health).filter(([, health]) => health === "degraded").map(([name]) => `${room.name} ${name}`));
-  const lowConfidence = rooms.filter((room) => (room.confidence ?? 0) < 0.55);
-  const averageConfidence = rooms.length ? Math.round((rooms.reduce((sum, room) => sum + (room.confidence ?? 0), 0) / rooms.length) * 100) : 0;
-  const roomWithIssues = rooms.filter((room) => room.is_stale || room.warnings.length || Object.values(room.sensor_health).some((health) => health === "degraded" || health === "offline")).length;
-  const alerts = buildAdminAlerts(rooms);
-
+  const { locale, choose } = useLanguage();
   return (
-    <section className="admin-dashboard" aria-label="Admin operations dashboard">
-      <div className="admin-hero">
+    <section className="account-page">
+      <PageTitle eyebrow="YOUR ACCOUNT" title={choose("账户", "Account")} detail={choose("管理你的登录状态与隐私信息。", "Manage your session and privacy information.")} />
+      <div className="account-profile">
+        <div className="profile-avatar"><UserCircle size={34} /></div>
         <div>
-          <p className="eyebrow">Operations console</p>
-          <h2>Space health at a glance</h2>
-          <p className="muted">Monitor room availability, sensor health, stale data, and privacy-safe data quality before students see recommendations.</p>
-        </div>
-        <div className="admin-actions">
-          <StatusPill status={data.backendStatus} />
-          <button type="button" className="primary" onClick={onOpenStudent}>
-            Open student view
-          </button>
-          <button type="button" onClick={onSignOut}>
-            Sign out
-          </button>
+          <span>{choose("普通用户", "Student account")}</span>
+          <h2>{user.username}</h2>
+          <p>{choose("账户创建于", "Account created")} {formatDate(user.created_at, locale)}</p>
         </div>
       </div>
-
-      <div className="admin-kpis">
-        <AdminKpi label="Rooms online" value={`${rooms.length - staleRooms.length}/${rooms.length}`} tone="ok" detail={`${roomWithIssues} need attention`} />
-        <AdminKpi label="Avg confidence" value={`${averageConfidence}%`} tone={averageConfidence >= 70 ? "ok" : "warning"} detail={`${lowConfidence.length} low-confidence rooms`} />
-        <AdminKpi label="Sensor issues" value={`${offlineSensors.length + degradedSensors.length}`} tone={offlineSensors.length ? "danger" : degradedSensors.length ? "warning" : "ok"} detail={`${offlineSensors.length} offline, ${degradedSensors.length} degraded`} />
-        <AdminKpi label="Stale rooms" value={`${staleRooms.length}`} tone={staleRooms.length ? "warning" : "ok"} detail="Freshness guard for recommendations" />
-      </div>
-
-      <div className="admin-grid">
-        <section className="admin-panel room-ops">
-          <div className="panel-heading">
-            <h3>Room operations</h3>
-            <span className="muted">Live aggregate state</span>
-          </div>
-          <div className="admin-table" role="table" aria-label="Room operations table">
-            <div className="admin-row admin-row-head" role="row">
-              <span>Room</span>
-              <span>State</span>
-              <span>Confidence</span>
-              <span>Data age</span>
-              <span>Action</span>
-            </div>
-            {rooms.map((room) => (
-              <div className="admin-row" role="row" key={room.room_id}>
-                <span>
-                  <strong>{room.name}</strong>
-                  <small>{room.location ?? "Unknown location"}</small>
-                </span>
-                <span>
-                  <Badge tone={toneForOccupancy(room.occupancy_level)} text={labels[room.room_state]} />
-                </span>
-                <span>{Math.round((room.confidence ?? 0) * 100)}%</span>
-                <span>{room.data_age_seconds == null ? "No data" : `${Math.round(room.data_age_seconds)}s`}</span>
-                <span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSelectRoom(room.room_id);
-                      onOpenStudent();
-                    }}
-                  >
-                    Inspect
-                  </button>
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="admin-panel">
-          <div className="panel-heading">
-            <h3>Sensor matrix</h3>
-            <span className="muted">Per-room device health</span>
-          </div>
-          <div className="sensor-matrix">
-            {rooms.map((room) => (
-              <div className="sensor-room" key={room.room_id}>
-                <strong>{room.name}</strong>
-                <div>
-                  {Object.entries(room.sensor_health).map(([sensor, health]) => (
-                    <span className={`sensor-chip ${health}`} key={`${room.room_id}-${sensor}`}>
-                      {sensor}
-                      <small>{health}</small>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="admin-panel">
-          <div className="panel-heading">
-            <h3>Alert queue</h3>
-            <span className="muted">{alerts.length} active</span>
-          </div>
-          <div className="alert-list">
-            {alerts.map((alert) => (
-              <div className={`alert-item ${alert.tone}`} key={alert.title}>
-                <span>{alert.tone.toUpperCase()}</span>
-                <strong>{alert.title}</strong>
-                <p>{alert.detail}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="admin-panel">
-          <div className="panel-heading">
-            <h3>Privacy and data quality</h3>
-            <span className="muted">Module 4 guardrails</span>
-          </div>
-          <div className="quality-list">
-            <QualityItem label="Raw RGB camera" value="Disabled" tone="ok" />
-            <QualityItem label="Face or identity recognition" value="Not used" tone="ok" />
-            <QualityItem label="Raw voice storage" value="Blocked" tone="ok" />
-            <QualityItem
-              label="LLM explanation fallback"
-              value={data.recommendations.recommendations.some((item) => item.explanation_source === "template") ? "Template active" : "Local LLM active"}
-              tone={data.recommendations.recommendations.some((item) => item.explanation_source === "template") ? "warning" : "ok"}
-            />
-            <QualityItem label="Recommendation warnings" value={`${data.recommendations.warnings.length}`} tone={data.recommendations.warnings.length ? "warning" : "ok"} />
-          </div>
-        </section>
-      </div>
-      <ModuleImplementationConsole data={data} rooms={rooms} staleRooms={staleRooms} offlineSensors={offlineSensors} degradedSensors={degradedSensors} averageConfidence={averageConfidence} />
+      <section className="account-section">
+        <div><h2>{choose("个人偏好记录", "Preference record")}</h2><p>{choose("你的学习模式与五项优先级已保存在数据库中。", "Your study mode and five preference priorities are stored in the database.")}</p></div>
+        <span className="status-confirm"><CheckCircle2 size={18} />{choose("已同步", "Synced")}</span>
+      </section>
+      <section className="account-section privacy-account">
+        <div><h2>{choose("隐私承诺", "Privacy commitment")}</h2><p>{choose(
+          "系统不收集学号、真实姓名、摄像画面或原始录音。推荐只使用房间整体状态和你主动设置的偏好。",
+          "The system does not collect student IDs, real names, camera footage or raw audio. Recommendations use only room-level conditions and the preferences you choose to provide.",
+        )}</p></div>
+        <ShieldCheck size={26} />
+      </section>
+      <section className="account-section">
+        <div><h2>{choose("当前会话", "Current session")}</h2><p>{choose("偏好学习", "Preference learning")}: {preferences?.learning_enabled === false ? choose("已暂停", "Paused") : choose("已开启", "Enabled")}</p></div>
+        <button type="button" className="secondary-button" onClick={onSignOut}><LogOut size={18} />{choose("退出登录", "Sign out")}</button>
+      </section>
     </section>
   );
 }
 
-function ModuleImplementationConsole({
+function AdminApp({
+  user,
   data,
-  rooms,
-  staleRooms,
-  offlineSensors,
-  degradedSensors,
-  averageConfidence,
+  error,
+  refreshing,
+  onRefresh,
+  onSignOut,
 }: {
+  user: UserResponse;
   data: DashboardData;
-  rooms: RoomStatus[];
-  staleRooms: RoomStatus[];
-  offlineSensors: string[];
-  degradedSensors: string[];
-  averageConfidence: number;
+  error: string | null;
+  refreshing: boolean;
+  onRefresh: () => void;
+  onSignOut: () => void;
 }) {
-  const recommendations = data.recommendations.recommendations;
-  const selectionCount = data.selectionHistory?.selections.length ?? 0;
-  const forecastCount = rooms.reduce((count, room) => count + room.forecasts.length, 0);
-  const thermalAvailable = Object.values(data.thermalPreviews).filter((preview) => preview.available).length;
-  const soundAvailable = rooms.filter((room) => room.features.sound_rms_mean != null).length;
-  const explanationSources = Array.from(new Set(recommendations.map((item) => item.explanation_source))).join(", ") || "none";
-
+  const { locale, choose } = useLanguage();
+  const [page, setPage] = useState<AdminPage>("overview");
+  const healthyRooms = data.rooms.filter((room) => !room.is_stale && !Object.values(room.sensor_health).some((health) => health === "offline")).length;
+  const alerts = data.rooms.reduce((count, room) => count + Number(room.is_stale) + Object.values(room.sensor_health).filter((health) => health === "offline" || health === "degraded").length, 0);
   return (
-    <section className="admin-internal" aria-label="Module implementation console">
-      <div className="admin-section-title">
-        <div>
-          <p className="eyebrow">Internal implementation</p>
-          <h2>Full project control view</h2>
-          <p className="muted">Hardware signals, backend contracts, recommendation logic, and frontend guardrails are shown here for the final showcase.</p>
-        </div>
-        <span className="module-badge">Admin overview</span>
-      </div>
-
-      <div className="module-strip">
-        <ModuleCard module="Module 1" title="Hardware sensing" value={`${thermalAvailable}/${rooms.length}`} detail="Thermal previews available" tone={thermalAvailable ? "ok" : "warning"} />
-        <ModuleCard module="Module 2" title="Backend services" value={data.backendStatus.toUpperCase()} detail={`${rooms.length} rooms, ${forecastCount} forecasts`} tone={data.backendStatus === "ok" ? "ok" : "warning"} />
-        <ModuleCard module="Module 3" title="ML recommendation" value={`${averageConfidence}%`} detail={`${recommendations.length} ranked rooms`} tone={averageConfidence >= 70 ? "ok" : "warning"} />
-        <ModuleCard module="Module 4" title="Frontend console" value="Ready" detail="Student and admin views" tone="ok" />
-      </div>
-
-      <div className="implementation-grid">
-        <section className="admin-panel implementation-panel">
-          <div className="panel-heading">
-            <h3>Hardware data pipeline</h3>
-            <span className="module-badge">Module 1</span>
+    <div className="admin-shell">
+      <aside className="admin-sidebar">
+        <Brand />
+        <div className="admin-identity"><Settings size={18} /><span><strong>{user.username}</strong><small>{choose("系统管理员", "System administrator")}</small></span></div>
+        <nav aria-label={choose("管理员菜单", "Administrator navigation")}>
+          <AdminNavButton active={page === "overview"} icon={<Activity />} label={choose("总览", "Overview")} onClick={() => setPage("overview")} />
+          <AdminNavButton active={page === "monitor"} icon={<Radio />} label={choose("实时监测", "Live monitor")} onClick={() => setPage("monitor")} />
+          <AdminNavButton active={page === "rooms"} icon={<DoorOpen />} label={choose("教室数据", "Room data")} onClick={() => setPage("rooms")} />
+          <AdminNavButton active={page === "system"} icon={<Server />} label={choose("系统状态", "System status")} onClick={() => setPage("system")} />
+        </nav>
+        <button type="button" className="admin-logout" aria-label={choose("退出登录", "Sign out")} title={choose("退出登录", "Sign out")} onClick={onSignOut}><LogOut size={18} /><span>{choose("退出登录", "Sign out")}</span></button>
+      </aside>
+      <main className="admin-content">
+        <header className="admin-topbar">
+          <div><p className="overline">ADMIN CONSOLE</p><h1>{
+            page === "overview"
+              ? choose("运行总览", "Operational overview")
+              : page === "monitor"
+                ? choose("实时传感器监测", "Live sensor monitoring")
+                : page === "rooms"
+                  ? choose("教室量化数据", "Quantitative room data")
+                  : choose("系统与模块状态", "System and module status")
+          }</h1></div>
+          <div className="admin-top-actions">
+            <LanguageToggle />
+            <button type="button" className="secondary-button" onClick={onRefresh} disabled={refreshing}>
+              <RefreshCw className={refreshing ? "spin" : ""} size={18} />{choose("刷新", "Refresh")}
+            </button>
           </div>
-          <PipelineStep index="01" title="Thermal sensor" detail={`${thermalAvailable} low-resolution thermal previews, ${rooms.reduce((sum, room) => sum + (room.features.thermal_hot_region_count ?? 0), 0)} hot regions currently detected.`} status={thermalAvailable ? "Live" : "Waiting"} />
-          <PipelineStep index="02" title="Radar occupancy" detail={`${rooms.reduce((sum, room) => sum + (room.features.radar_active_target_count ?? 0), 0)} active targets aggregated without identity data.`} status={offlineSensors.some((item) => item.includes("radar")) ? "Check" : "Live"} />
-          <PipelineStep index="03" title="Sound preview" detail={`${soundAvailable} RMS summaries available; raw voice storage remains blocked.`} status={soundAvailable ? "Privacy safe" : "No sample"} />
-          <PipelineStep index="04" title="Environment signals" detail="Light, temperature, and humidity are consumed as numeric features for comfort scoring." status={degradedSensors.length ? "Degraded" : "Live"} />
-        </section>
-
-        <section className="admin-panel implementation-panel">
-          <div className="panel-heading">
-            <h3>Backend API surface</h3>
-            <span className="module-badge">Module 2</span>
-          </div>
-          <div className="endpoint-list">
-            <EndpointCard method="GET" path="/api/v1/rooms/status" detail={`${rooms.length} aggregate room states`} />
-            <EndpointCard method="GET" path="/api/v1/rooms/{room_id}/live" detail="Room, thermal preview, and sound preview in one snapshot" />
-            <EndpointCard method="POST" path="/api/v1/me/recommendations" detail="Authenticated recommendation request with learned preferences" />
-            <EndpointCard method="GET" path="/api/v1/me/room-selections" detail={`${selectionCount} recent local choices loaded when signed in`} />
-            <EndpointCard method="POST" path="/api/v1/me/preferences/reset-learned" detail="Reset learned weights without deleting manual preferences" />
-          </div>
-        </section>
-
-        <section className="admin-panel implementation-panel">
-          <div className="panel-heading">
-            <h3>ML and ranking logic</h3>
-            <span className="module-badge">Module 3</span>
-          </div>
-          <div className="model-stack">
-            <ModelStage label="Feature vector" value="Thermal + radar + sound + environment" detail="Only aggregate, privacy-safe signals enter the recommender." />
-            <ModelStage label="Forecast" value={`${forecastCount} horizons`} detail="15-minute and 30-minute occupancy forecasts support forward-looking choices." />
-            <ModelStage label="Ranking" value={recommendations[0] ? `${recommendations[0].room_id} #1` : "No rank"} detail="Score combines study mode, occupancy, confidence, freshness, and fallback penalties." />
-            <ModelStage label="Explanation" value={explanationSources} detail="Template explanations remain available when LLM generation is unavailable." />
-          </div>
-        </section>
-
-        <section className="admin-panel implementation-panel">
-          <div className="panel-heading">
-            <h3>Showcase readiness</h3>
-            <span className="module-badge">Module 4</span>
-          </div>
-          <div className="quality-list">
-            <QualityItem label="Student experience" value="Complete: ranking, detail, privacy, learning controls" tone="ok" />
-            <QualityItem label="Admin experience" value="Complete: health, modules, APIs, ML visibility" tone="ok" />
-            <QualityItem label="Real hardware data" value={isRealApi ? "Requires live backend and devices" : "Mocked in this frontend demo"} tone="warning" />
-            <QualityItem label="Production admin auth" value="Demo login only; backend auth needed for deployment" tone="warning" />
-            <QualityItem label="Model training UI" value="Shown as status/logic, not executable in browser" tone="warning" />
-          </div>
-        </section>
-      </div>
-    </section>
+        </header>
+        {error ? <StatusBanner text={error} /> : null}
+        {page === "overview" ? (
+          <>
+            <section className="admin-kpi-grid">
+              <AdminKpi label={choose("活跃教室", "Active rooms")} value={`${data.rooms.length}`} detail={choose("当前参与监测", "Currently monitored")} icon={<DoorOpen />} />
+              <AdminKpi label={choose("状态正常", "Healthy")} value={`${healthyRooms}`} detail={choose("数据新鲜且传感器在线", "Fresh data and sensors online")} icon={<CheckCircle2 />} tone="ok" />
+              <AdminKpi label={choose("待处理告警", "Open alerts")} value={`${alerts}`} detail={choose("过期、降级或离线", "Stale, degraded or offline")} icon={<AlertTriangle />} tone={alerts ? "warning" : "ok"} />
+              <AdminKpi label={choose("推荐请求", "Recommendations")} value={`${data.recommendations.recommendations.length}`} detail={choose("本轮候选结果", "Candidates in this cycle")} icon={<Cpu />} />
+            </section>
+            <section className="admin-section">
+              <SectionBar title={choose("教室运行状态", "Room operations")} detail={choose("量化数据仅在管理员端展示", "Quantitative data is restricted to administrators")} />
+              <AdminRoomTable rooms={data.rooms} compact />
+            </section>
+          </>
+        ) : null}
+        {page === "monitor" ? <LiveMonitor rooms={data.rooms} /> : null}
+        {page === "rooms" ? (
+          <section className="admin-section">
+            <SectionBar title={choose("实时量化遥测", "Live quantitative telemetry")} detail={`${choose("更新于", "Updated")} ${formatTime(data.lastUpdated, locale)}`} />
+            <AdminRoomTable rooms={data.rooms} />
+          </section>
+        ) : null}
+        {page === "system" ? <SystemView data={data} /> : null}
+      </main>
+    </div>
   );
 }
 
-function ModuleCard({ module, title, value, detail, tone }: { module: string; title: string; value: string; detail: string; tone: "ok" | "warning" | "danger" }) {
+function LiveMonitor({ rooms }: { rooms: RoomStatus[] }) {
+  const { language, locale, choose } = useLanguage();
+  const [roomId, setRoomId] = useState(rooms[0]?.room_id ?? "");
+  const [snapshot, setSnapshot] = useState<LiveSensorSnapshotResponse | null>(null);
+  const [monitorError, setMonitorError] = useState<string | null>(null);
+  const [polling, setPolling] = useState(false);
+  const pollMs = Math.max(500, Number(import.meta.env.VITE_LIVE_SENSOR_POLL_MS ?? 1000));
+
+  useEffect(() => {
+    if (!roomId) return;
+    let active = true;
+    let running = false;
+    async function poll() {
+      if (running) return;
+      running = true;
+      setPolling(true);
+      try {
+        const next = await loadLiveSensorSnapshot(roomId);
+        if (active) {
+          setSnapshot(next);
+          setMonitorError(null);
+        }
+      } catch (error) {
+        if (active) setMonitorError(messageFrom(error, choose("实时传感器数据暂时不可用。", "Live sensor data is temporarily unavailable."), language));
+      } finally {
+        running = false;
+        if (active) setPolling(false);
+      }
+    }
+    setSnapshot(null);
+    void poll();
+    const timer = window.setInterval(() => void poll(), pollMs);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [roomId, pollMs]);
+
+  const room = snapshot?.room ?? rooms.find((entry) => entry.room_id === roomId) ?? rooms[0];
+  if (!room) {
+    return <EmptyPanel title={choose("没有可监测的教室", "No rooms available to monitor")} detail={choose("教室注册后会出现在这里。", "Registered rooms will appear here.")} />;
+  }
+  const catalog = catalogFor(room, language);
+  const peopleCount = snapshot?.people_count.available ? snapshot.people_count.predicted_people_count_rounded : snapshot?.thermal_analysis.estimated_people_count;
+  const updatedAt = snapshot?.generated_at ? formatTime(snapshot.generated_at, locale) : "--";
+
   return (
-    <article className={`module-card ${tone}`}>
-      <span className="module-badge">{module}</span>
-      <h3>{title}</h3>
-      <strong>{value}</strong>
-      <p>{detail}</p>
+    <div className="live-monitor">
+      <section className="monitor-room-strip" aria-label={choose("选择监测教室", "Select a room to monitor")}>
+        {rooms.map((entry) => {
+          const entryCatalog = catalogFor(entry, language);
+          return (
+            <button key={entry.room_id} type="button" className={roomId === entry.room_id ? "active" : ""} onClick={() => setRoomId(entry.room_id)}>
+              <span className={`monitor-room-dot ${stateTone(entry.room_state)}`} />
+              <span><strong>{entryCatalog.displayName}</strong><small>{entryCatalog.shortLocation}</small></span>
+            </button>
+          );
+        })}
+      </section>
+
+      <section className="monitor-heading">
+        <div>
+          <span className="live-indicator"><i />LIVE SENSOR FEED</span>
+          <h2>{catalog.displayName}</h2>
+          <p>{catalog.shortLocation} · {choose("更新于", "Updated")} {updatedAt}</p>
+        </div>
+        <span className={`monitor-connection ${monitorError ? "warning" : "ok"}`}>
+          {polling ? <RefreshCw className="spin" size={15} /> : <Wifi size={15} />}
+          {monitorError ? choose("连接降级", "Connection degraded") : choose("正在监测", "Monitoring")}
+        </span>
+      </section>
+      {monitorError ? <StatusBanner text={monitorError} /> : null}
+
+      <div className="monitor-primary-grid">
+        <section className="thermal-monitor-panel">
+          <div className="monitor-panel-heading">
+            <div><span>MLX90640 · 32×24</span><h3>{choose("实时热成像与热区检测", "Live thermal view and heat-region detection")}</h3></div>
+            <span>{snapshot?.thermal_analysis.detected_region_count ?? 0} {choose("个检测框", "detection boxes")}</span>
+          </div>
+          <ThermalCanvas snapshot={snapshot} />
+          <div className="thermal-footer">
+            <span><ScanLine size={16} />{choose("检测框来自热区连通分析，不进行身份识别", "Boxes are generated by connected heat-region analysis, without identity recognition")}</span>
+            <span>{choose("阈值", "Threshold")} {formatNumber(snapshot?.thermal_analysis.threshold, "", 2)}</span>
+          </div>
+        </section>
+
+        <aside className="monitor-side-stack">
+          <section className="people-count-panel">
+            <div className="sensor-card-icon"><Users /></div>
+            <span>{choose("模型预测人数", "Model-estimated occupancy")}</span>
+            <strong>{peopleCount ?? "--"}<small> {choose("人", "people")}</small></strong>
+            <p>{snapshot?.people_count.model
+              ? `${snapshot.people_count.model.name} · ${snapshot.people_count.model.version}`
+              : choose("等待 Module 2 人数模型输出", "Waiting for the Module 2 occupancy model")}</p>
+            <div><span>{choose("置信度", "Confidence")}</span><em>{formatPercent(snapshot?.people_count.confidence)}</em></div>
+          </section>
+          <section className="sound-monitor-panel">
+            <div className="monitor-panel-heading compact">
+              <div><span>WINDOWS MICROPHONE</span><h3>{choose("声音强度", "Sound intensity")}</h3></div>
+              <Volume2 size={18} />
+            </div>
+            <SoundBars rms={snapshot?.sound_preview.rms ?? room.features.sound_rms_mean ?? 0} />
+            <div className="sound-reading"><strong>{formatNumber(snapshot?.sound_preview.rms ?? room.features.sound_rms_mean, "", 3)}</strong><span>Relative RMS</span></div>
+          </section>
+        </aside>
+      </div>
+
+      <section className="sensor-metric-grid">
+        <SensorMetric icon={<Thermometer />} label={choose("温度", "Temperature")} value={formatNumber(room.features.temperature_c, "°C", 1)} health={room.sensor_health.environment} />
+        <SensorMetric icon={<Droplets />} label={choose("湿度", "Humidity")} value={formatNumber(room.features.humidity_pct, "%", 0)} health={room.sensor_health.environment} />
+        <SensorMetric icon={<Lightbulb />} label={choose("相对光照", "Relative light level")} value={formatNumber(room.features.light_relative_mean ?? room.features.light_lux, room.features.light_relative_mean != null ? "" : " lx", room.features.light_relative_mean != null ? 2 : 0)} health={room.sensor_health.environment} />
+        <SensorMetric icon={<Gauge />} label={choose("综合适合度", "Overall suitability")} value={formatNumber(room.suitability_score, "/100", 0)} health={room.is_stale ? "degraded" : "ok"} />
+      </section>
+
+      <section className="state-classifier-panel">
+        <div className="monitor-panel-heading">
+          <div><span>MODULE 2 · FOUR-STATE CLASSIFIER</span><h3>{choose("当前教室综合状态", "Current combined room state")}</h3></div>
+          <span className={`table-state ${stateTone(room.room_state)}`}>{roomStateText[room.room_state][language]}</span>
+        </div>
+        <div className="state-classifier-grid">
+          {([
+            ["empty_or_low_activity", choose("空教室 / 低活动", "Empty / low activity"), choose("低人数与低声音活动", "Low occupancy and low sound activity")],
+            ["quiet_study_recommended", choose("安静学习", "Quiet study"), choose("适合个人专注学习", "Suitable for focused individual study")],
+            ["discussion_allowed", choose("允许讨论", "Discussion allowed"), choose("适合正常小组交流", "Suitable for normal group conversation")],
+            ["not_recommended_noisy_or_crowded", choose("不推荐", "Not recommended"), choose("持续嘈杂或拥挤", "Persistently noisy or crowded")],
+          ] as const).map(([state, label, detail]) => (
+            <div key={state} className={room.room_state === state ? `active ${stateTone(state)}` : ""}>
+              <span>{room.room_state === state ? <CheckCircle2 /> : <span />}</span>
+              <strong>{label}</strong>
+              <small>{detail}</small>
+            </div>
+          ))}
+        </div>
+        <footer>
+          <span>{choose("分类置信度", "Classification confidence")} <strong>{formatPercent(room.confidence)}</strong></span>
+          <span>{choose("模型", "Model")} {room.warnings.length
+            ? choose(`含 ${room.warnings.length} 条警告`, `${room.warnings.length} warning${room.warnings.length === 1 ? "" : "s"}`)
+            : choose("输入完整", "Complete input")}</span>
+          <span>{choose("数据年龄", "Data age")} <strong>{room.data_age_seconds == null ? "--" : `${Math.round(room.data_age_seconds)}s`}</strong></span>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function ThermalCanvas({ snapshot }: { snapshot: LiveSensorSnapshotResponse | null }) {
+  const { language, choose } = useLanguage();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const preview = snapshot?.thermal_preview;
+  const boxes = snapshot?.thermal_analysis.boxes ?? [];
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    const width = 640;
+    const height = 480;
+    canvas.width = width;
+    canvas.height = height;
+    context.clearRect(0, 0, width, height);
+    context.fillStyle = "#090c12";
+    context.fillRect(0, 0, width, height);
+    if (!preview?.available || !preview.values || !preview.width || !preview.height) return;
+    const previewWidth = preview.width;
+    const previewHeight = preview.height;
+    const cellWidth = width / previewWidth;
+    const cellHeight = height / previewHeight;
+    preview.values.forEach((value, index) => {
+      context.fillStyle = thermalColor(value);
+      context.fillRect((index % previewWidth) * cellWidth, Math.floor(index / previewWidth) * cellHeight, Math.ceil(cellWidth), Math.ceil(cellHeight));
+    });
+    boxes.forEach((box, index) => {
+      const x = box.x * width;
+      const y = box.y * height;
+      const boxWidth = box.width * width;
+      const boxHeight = box.height * height;
+      context.strokeStyle = "#7be7ff";
+      context.lineWidth = 3;
+      context.strokeRect(x, y, boxWidth, boxHeight);
+      context.fillStyle = "rgba(3, 12, 20, 0.82)";
+      context.fillRect(x, Math.max(0, y - 25), language === "zh" ? 96 : 142, 25);
+      context.fillStyle = "#dffaff";
+      context.font = "600 13px system-ui";
+      context.fillText(
+        `${choose("热区", "Region")} ${index + 1} · ${Math.round(box.confidence * 100)}%`,
+        x + 7,
+        Math.max(17, y - 8),
+      );
+    });
+  }, [preview, boxes, choose, language]);
+
+  return (
+    <div className="thermal-canvas-wrap">
+      <canvas ref={canvasRef} aria-label={choose("实时热成像检测画面", "Live thermal detection view")} />
+      {!preview?.available ? (
+        <div className="thermal-empty">
+          <ScanLine size={28} />
+          <strong>{choose("等待热成像数据", "Waiting for thermal data")}</strong>
+          <span>{choose("连接 MLX90640 后将自动显示", "The feed will appear when the MLX90640 is connected")}</span>
+        </div>
+      ) : null}
+      <div className="thermal-scale"><span>{choose("低", "Low")}</span><i /><span>{choose("高", "High")}</span></div>
+    </div>
+  );
+}
+
+function SoundBars({ rms }: { rms: number }) {
+  const { choose } = useLanguage();
+  const bars = Array.from({ length: 28 }, (_, index) => {
+    const wave = 0.35 + Math.abs(Math.sin(index * 0.78 + rms * 9)) * 0.65;
+    return Math.max(8, Math.min(100, wave * Math.max(0.16, rms) * 130));
+  });
+  return <div className="sound-bars" aria-label={`${choose("声音相对 RMS", "Relative sound RMS")} ${rms.toFixed(3)}`}>{bars.map((height, index) => <i key={index} style={{ height: `${height}%` }} />)}</div>;
+}
+
+function SensorMetric({ icon, label, value, health }: { icon: ReactNode; label: string; value: string; health: string | undefined }) {
+  const { language } = useLanguage();
+  return (
+    <article className="sensor-metric">
+      <span className="sensor-card-icon">{icon}</span>
+      <div><small>{label}</small><strong>{value}</strong></div>
+      <em className={health ?? "offline"}>{sensorHealthText(health, language)}</em>
     </article>
   );
 }
 
-function PipelineStep({ index, title, detail, status }: { index: string; title: string; detail: string; status: string }) {
-  return (
-    <div className="pipeline-step">
-      <span>{index}</span>
-      <div>
-        <strong>{title}</strong>
-        <p>{detail}</p>
-      </div>
-      <small>{status}</small>
-    </div>
-  );
+function AdminNavButton({ active, icon, label, onClick }: { active: boolean; icon: ReactNode; label: string; onClick: () => void }) {
+  return <button type="button" className={active ? "active" : ""} aria-label={label} title={label} onClick={onClick}>{icon}<span>{label}</span></button>;
 }
 
-function EndpointCard({ method, path, detail }: { method: string; path: string; detail: string }) {
-  return (
-    <div className="endpoint-card">
-      <span>{method}</span>
-      <code>{path}</code>
-      <p>{detail}</p>
-    </div>
-  );
-}
-
-function ModelStage({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return (
-    <div className="model-stage">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <p>{detail}</p>
-    </div>
-  );
-}
-
-function AdminKpi({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: "ok" | "warning" | "danger" }) {
+function AdminKpi({ label, value, detail, icon, tone = "" }: { label: string; value: string; detail: string; icon: ReactNode; tone?: string }) {
   return (
     <article className={`admin-kpi ${tone}`}>
-      <span>{label}</span>
+      <div><span>{label}</span>{icon}</div>
       <strong>{value}</strong>
-      <p>{detail}</p>
+      <small>{detail}</small>
     </article>
   );
 }
 
-function QualityItem({ label, value, tone }: { label: string; value: string; tone: "ok" | "warning" | "danger" }) {
+function AdminRoomTable({ rooms, compact = false }: { rooms: RoomStatus[]; compact?: boolean }) {
+  const { language, choose } = useLanguage();
   return (
-    <div className="quality-item">
-      <span>
-        <strong>{label}</strong>
-        <small>{value}</small>
-      </span>
-      <Badge tone={tone} text={tone === "ok" ? "OK" : tone === "warning" ? "Check" : "Critical"} />
+    <div className="admin-table-wrap">
+      <table className="admin-room-table">
+        <thead>
+          <tr>
+            <th>{choose("教室", "Room")}</th>
+            <th>{choose("分类状态", "Classification")}</th>
+            <th>{choose("占用", "Occupancy")}</th>
+            <th>{choose("适合度", "Suitability")}</th>
+            <th>{choose("置信度", "Confidence")}</th>
+            {!compact ? <><th>{choose("温度", "Temperature")}</th><th>{choose("湿度", "Humidity")}</th><th>{choose("光照", "Light")}</th><th>{choose("声音 RMS", "Sound RMS")}</th></> : null}
+            <th>{choose("数据年龄", "Data age")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rooms.map((room) => {
+            const catalog = catalogFor(room, language);
+            return <tr key={room.room_id}>
+              <td><strong>{catalog.displayName}</strong><small>{catalog.shortLocation}</small></td>
+              <td><span className={`table-state ${stateTone(room.room_state)}`}>{roomStateText[room.room_state][language]}</span></td>
+              <td>{occupancyAdminText(room.occupancy_level, language)}</td>
+              <td>{formatNumber(room.suitability_score, "", 0)}</td>
+              <td>{formatPercent(room.confidence)}</td>
+              {!compact ? (
+                <>
+                  <td>{formatNumber(room.features.temperature_c, "°C", 1)}</td>
+                  <td>{formatNumber(room.features.humidity_pct, "%", 0)}</td>
+                  <td>{formatNumber(room.features.light_lux, " lx", 0)}</td>
+                  <td>{formatNumber(room.features.sound_rms_mean, "", 3)}</td>
+                </>
+              ) : null}
+              <td>{room.data_age_seconds == null ? "--" : `${Math.round(room.data_age_seconds)}s`}</td>
+            </tr>
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-function buildAdminAlerts(rooms: RoomStatus[]) {
-  const alerts = rooms.flatMap((room) => {
-    const items: Array<{ tone: "warning" | "danger"; title: string; detail: string }> = [];
-    if (room.is_stale) items.push({ tone: "warning", title: `${room.name} data is stale`, detail: "Recommendations will apply stale-data penalties until fresh observations arrive." });
-    if ((room.confidence ?? 0) < 0.55) items.push({ tone: "warning", title: `${room.name} confidence is low`, detail: "Review model inputs before presenting this room as a strong suggestion." });
-    Object.entries(room.sensor_health).forEach(([sensor, health]) => {
-      if (health === "offline") items.push({ tone: "danger", title: `${room.name} ${sensor} offline`, detail: "Maintenance should inspect connectivity or configuration." });
-      if (health === "degraded") items.push({ tone: "warning", title: `${room.name} ${sensor} degraded`, detail: "Data is usable but recommendation confidence may be reduced." });
-    });
-    return items;
-  });
-  return alerts.length ? alerts : [{ tone: "warning" as const, title: "No active incidents", detail: "All configured sensors are currently reporting normally." }];
-}
-
-function TrendChart({ points }: { points: HistoryPoint[] }) {
-  const values = points.map((point) => point.occupancy_mean ?? 0);
-  const path = values
-    .map((value, index) => {
-      const x = 8 + (index / Math.max(1, values.length - 1)) * 284;
-      const y = 112 - (value / 3) * 96;
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    })
-    .join(" ");
+function SystemView({ data }: { data: DashboardData }) {
+  const { language, choose } = useLanguage();
+  const sensorRows = data.rooms.flatMap((room) => Object.entries(room.sensor_health).map(([sensor, health]) => ({ room, sensor, health })));
   return (
-    <section className="trend" aria-label="Occupancy history">
-      <div className="panel-heading">
-        <h3>History and forecast</h3>
-        <span className="muted">Occupancy level, last hour</span>
-      </div>
-      {points.length ? (
-        <svg viewBox="0 0 300 130" role="img" aria-label="Line chart of occupancy history">
-          <path d="M8 112 H292" className="axis" />
-          <path d="M8 16 V112" className="axis" />
-          <path d={path} className="trend-line" />
-          {values.map((value, index) => (
-            <circle key={`${index}-${value}`} cx={8 + (index / Math.max(1, values.length - 1)) * 284} cy={112 - (value / 3) * 96} r="3.5" />
-          ))}
-        </svg>
-      ) : (
-        <p className="empty">No history available.</p>
-      )}
-    </section>
-  );
-}
-
-function ThermalPreview({ preview, roomId }: { preview?: ThermalPreviewResponse; roomId: string }) {
-  const cells = useMemo(() => preview?.values?.slice(0, 32 * 24) ?? [], [preview]);
-  const thermalParams = new URLSearchParams({ room: roomId });
-  thermalParams.set("mode", isRealApi ? "api" : "mock");
-  return (
-    <section className="thermal" aria-label="Thermal preview">
-      <div className="panel-heading">
-        <h3>Thermal preview</h3>
-        <span className="muted">32 x 24 normalized</span>
-      </div>
-      {preview?.available && cells.length ? (
-        <div className="heatmap" role="img" aria-label="Low resolution non-camera thermal distribution preview">
-          {cells.map((value, index) => (
-            <span key={index} style={{ backgroundColor: heatColor(value) }} />
+    <div className="system-grid">
+      <section className="admin-section">
+        <SectionBar title={choose("服务状态", "Service status")} detail={choose("前端、后端、数据库与推荐适配器", "Frontend, backend, database and recommendation adapter")} />
+        <div className="service-list">
+          <ServiceRow icon={<Wifi />} label={choose("前端连接", "Frontend connection")} value={choose("正常", "Operational")} tone="ok" />
+          <ServiceRow icon={<Server />} label={choose("FastAPI 后端", "FastAPI backend")} value={data.backendStatus === "ok" ? choose("正常", "Operational") : choose("降级", "Degraded")} tone={data.backendStatus === "ok" ? "ok" : "warning"} />
+          <ServiceRow icon={<Database />} label={choose("SQLite 数据库", "SQLite database")} value={choose("已连接", "Connected")} tone="ok" />
+          <ServiceRow icon={<Cpu />} label={choose("推荐适配器", "Recommendation adapter")} value={data.recommendations.warnings.includes("RECOMMENDATION_ADAPTER_FALLBACK") ? choose("回退模式", "Fallback mode") : choose("规则模式", "Rule-based mode")} tone="ok" />
+        </div>
+      </section>
+      <section className="admin-section">
+        <SectionBar title={choose("传感器健康", "Sensor health")} detail={choose("按教室与传感器查看", "Status by room and sensor")} />
+        <div className="sensor-health-grid">
+          {sensorRows.map(({ room, sensor, health }) => (
+            <div key={`${room.room_id}-${sensor}`} className="sensor-health-row">
+              <span><strong>{catalogFor(room, language).displayName}</strong><small>{sensorName(sensor, language)}</small></span>
+              <em className={health}>{sensorHealthText(health, language)}</em>
+            </div>
           ))}
         </div>
-      ) : (
-        <p className="empty">Unavailable: {preview?.unavailable_reason ?? "not_available"}</p>
-      )}
-      <p className="inline-note">Non-camera image for current overall heat distribution only; not saved as history.</p>
-      <a className="thermal-monitor-link" href={`/thermal?${thermalParams.toString()}`}>
-        Open full thermal monitor
-      </a>
-    </section>
-  );
-}
-
-function PrivacyPanel() {
-  return (
-    <section className="privacy-panel">
-      <h3>Privacy</h3>
-      <ul>
-        <li>No RGB camera.</li>
-        <li>No face or identity recognition.</li>
-        <li>No raw voice storage.</li>
-        <li>Dashboard shows aggregate state and occupancy level.</li>
-      </ul>
-    </section>
-  );
-}
-
-function StateBadges({ room, item }: { room?: RoomStatus; item?: RecommendationItem }) {
-  return (
-    <span className="badges">
-      {room ? <Badge tone={toneForOccupancy(room.occupancy_level)} text={labels[room.room_state]} /> : null}
-      {item ? <Badge tone={toneForOccupancy(item.forecast_30m)} text={`30m ${labels[item.forecast_30m]}`} /> : null}
-    </span>
-  );
-}
-
-function Badge({ text, tone }: { text: string; tone: "ok" | "info" | "warning" | "danger" }) {
-  return <span className={`badge ${tone}`}>{text}</span>;
-}
-
-function Score({ value }: { value: number }) {
-  const label = value >= 80 ? "Best" : value >= 50 ? "Good" : "Fair";
-  return (
-    <span className="score" aria-label={`Recommendation fit ${label}`}>
-      {label}
-    </span>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
+      </section>
+      <section className="admin-section system-privacy">
+        <SectionBar title={choose("隐私边界", "Privacy boundaries")} detail={choose("系统内部实现约束", "System implementation constraints")} />
+        <ul>
+          <li>{choose("热阵列只保留 32 × 24 的短时归一化预览，不写入历史数据库。", "The thermal array retains only a short-lived normalised 32 × 24 preview; it is never written to historical storage.")}</li>
+          <li>{choose("声音模块只处理强度摘要，不保存原始波形或录音。", "The sound module processes intensity summaries only; raw waveforms and recordings are not stored.")}</li>
+          <li>{choose("推荐层只接收结构化房间状态与匿名偏好。", "The recommendation layer receives only structured room states and pseudonymous preferences.")}</li>
+          <li>{choose("学生端只显示定性结果，量化遥测集中在本管理员界面。", "The student interface shows qualitative guidance only; quantitative telemetry is restricted to this administrator console.")}</li>
+        </ul>
+      </section>
     </div>
   );
 }
 
-function StatusPill({ status }: { status: "ok" | "degraded" | "offline" }) {
-  const text = status === "ok" ? "Backend connected" : status === "degraded" ? "Mock/fallback active" : "Offline";
-  return <span className={`status-pill ${status}`}>{text}</span>;
+function ServiceRow({ icon, label, value, tone }: { icon: ReactNode; label: string; value: string; tone: string }) {
+  return <div className="service-row"><span className="service-icon">{icon}</span><strong>{label}</strong><em className={tone}>{value}</em></div>;
 }
 
-function Notice({ tone, text }: { tone: "warning" | "danger"; text: string }) {
+function LanguageToggle() {
+  const { language, choose, toggleLanguage } = useLanguage();
+  const label = choose("切换为英文", "Switch to Chinese");
   return (
-    <div className={`notice ${tone}`} role="status">
-      {text}
+    <button type="button" className="icon-button language-toggle" aria-label={label} title={label} onClick={toggleLanguage}>
+      <Languages size={19} />
+      <span aria-hidden="true">{language === "zh" ? "EN" : "中"}</span>
+    </button>
+  );
+}
+
+function Brand() {
+  const { choose } = useLanguage();
+  return (
+    <div className="brand">
+      <span className="brand-mark"><BookOpen size={21} /></span>
+      <span><strong>StudySpace</strong><small>{choose("隐私优先学习助手", "Privacy-first advisor")}</small></span>
     </div>
   );
 }
 
-function Skeleton() {
+function PageTitle({ eyebrow, title, detail }: { eyebrow: string; title: string; detail: string }) {
+  return <header className="page-title"><p className="overline">{eyebrow}</p><h1>{title}</h1><p>{detail}</p></header>;
+}
+
+function SectionBar({ title, detail }: { title: string; detail: string }) {
+  return <div className="section-bar"><div><h2>{title}</h2><p>{detail}</p></div></div>;
+}
+
+function StatusBanner({ text }: { text: string }) {
+  return <div className="status-banner" role="status"><AlertTriangle size={18} /><span>{text}</span></div>;
+}
+
+function EmptyPanel({ title, detail }: { title: string; detail: string }) {
+  return <div className="empty-panel"><DoorOpen size={24} /><strong>{title}</strong><p>{detail}</p></div>;
+}
+
+function AppLoading() {
+  const { choose } = useLanguage();
   return (
-    <div className="skeleton" aria-label="Loading dashboard">
-      <span />
-      <span />
-      <span />
-    </div>
+    <main className="app-loading">
+      <Brand />
+      <RefreshCw className="spin" size={24} />
+      <p>{choose("正在准备你的学习空间", "Preparing your study spaces")}</p>
+    </main>
   );
 }
 
-function EmptyState() {
-  return <p className="empty">No active rooms are available for recommendation.</p>;
+function requestFromPreferences(preferences: MePreferenceResponse, profileId: string): RecommendationRequest {
+  return {
+    schema_version: "1.0",
+    profile_id: profileId,
+    study_mode: preferences.effective.study_mode,
+    preferences: {
+      quiet_priority: preferences.effective.quiet_priority,
+      low_occupancy_priority: preferences.effective.low_occupancy_priority,
+      brightness_priority: preferences.effective.brightness_priority,
+      comfort_priority: preferences.effective.comfort_priority,
+      distance_priority: preferences.effective.distance_priority,
+    },
+    candidate_room_ids: defaultRequest.candidate_room_ids,
+  };
 }
 
-function toneForOccupancy(level: OccupancyLevel) {
-  if (level === "empty" || level === "low") return "ok" as const;
-  if (level === "medium") return "warning" as const;
-  if (level === "high") return "danger" as const;
-  return "info" as const;
+function greeting(date: Date, language: Language) {
+  const hour = date.getHours();
+  if (hour < 11) return selectText(language, "早上好", "Good morning");
+  if (hour < 13) return selectText(language, "中午好", "Good afternoon");
+  if (hour < 18) return selectText(language, "下午好", "Good afternoon");
+  return selectText(language, "晚上好", "Good evening");
 }
 
-function heatColor(value: number) {
-  const clamped = Math.max(0, Math.min(1, value));
-  const hue = 205 - clamped * 175;
-  const light = 92 - clamped * 42;
-  return `hsl(${hue} 80% ${light}%)`;
+function dailyQuote(date: Date, language: Language) {
+  const start = new Date(date.getFullYear(), 0, 0);
+  const day = Math.floor((date.getTime() - start.getTime()) / 86_400_000);
+  return quotes[day % quotes.length][language];
 }
 
-function formatReading(value: number | null | undefined, unit: string, decimals: number) {
-  return value == null || !Number.isFinite(value) ? "--" : `${value.toFixed(decimals)}${unit}`;
+function qualitativeFit(score: number, language: Language) {
+  if (score >= 80) return selectText(language, "非常适合你", "Excellent match");
+  if (score >= 58) return selectText(language, "比较适合", "Good match");
+  return selectText(language, "可以作为备选", "Suitable alternative");
 }
 
-function formatPercent(value: number | null | undefined, decimals: number) {
-  return value == null || !Number.isFinite(value) ? "--" : `${(value * 100).toFixed(decimals)}%`;
+function fitTone(score: number) {
+  return score >= 80 ? "excellent" : score >= 58 ? "good" : "fair";
 }
 
-function formatMaybe(value?: number | null) {
-  if (value == null) return "Unavailable";
-  return value <= 1 ? value.toFixed(2) : `${Math.round(value)}`;
+function stateTone(state: RoomState) {
+  if (state === "quiet_study_recommended" || state === "empty_or_low_activity") return "ok";
+  if (state === "discussion_allowed") return "info";
+  if (state === "not_recommended_noisy_or_crowded") return "warning";
+  return "muted";
 }
 
-function formatTime(value?: string) {
-  if (!value) return "pending";
-  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(value));
+function forecastText(level: OccupancyLevel, language: Language) {
+  if (level === "empty" || level === "low") return selectText(language, "未来半小时预计宽松", "Good availability expected for the next 30 minutes");
+  if (level === "medium") return selectText(language, "未来半小时人数适中", "Moderate occupancy expected for the next 30 minutes");
+  if (level === "high") return selectText(language, "未来半小时可能拥挤", "Crowding is likely within the next 30 minutes");
+  return selectText(language, "未来趋势待确认", "30-minute outlook pending");
+}
+
+function qualitativeSummary(room: RoomStatus, recommendation: RecommendationItem | null, language: Language) {
+  if (room.room_state === "unknown") return selectText(language, "目前缺少足够的新数据，建议到现场确认后再决定。", "There is not enough fresh data yet. Verify the room on arrival before deciding.");
+  if (room.is_stale) return selectText(language, "这个空间可能仍然可用，但最新状态有延迟，建议谨慎参考。", "This space may still be suitable, but its latest status is delayed. Treat the recommendation with caution.");
+  if (!recommendation) return selectText(language, "当前状态可供参考，你也可以回到首页查看更符合个人偏好的选择。", "The current status is available for reference. Return to Home to compare rooms against your preferences.");
+  if (recommendation.score >= 80) return selectText(language, "当前环境与你设置的学习偏好很匹配，适合作为首选。", "Current conditions align closely with your study preferences, making this a strong first choice.");
+  if (recommendation.score >= 58) return selectText(language, "整体比较符合你的需求，在首选空间不可用时值得考虑。", "This room meets most of your needs and is worth considering when your first choice is unavailable.");
+  return selectText(language, "当前环境与部分偏好不太匹配，建议同时查看其他教室。", "Current conditions do not align with some of your preferences. Consider comparing other rooms.");
+}
+
+function priorityWord(value: number, language: Language) {
+  if (value >= 0.8) return selectText(language, "很重要", "High priority");
+  if (value >= 0.5) return selectText(language, "比较重要", "Important");
+  if (value >= 0.2) return selectText(language, "一般", "Moderate");
+  return selectText(language, "不太在意", "Low priority");
+}
+
+function weatherDescription(code: number, language: Language) {
+  if (code === 0) return selectText(language, "晴", "Clear");
+  if (code <= 3) return selectText(language, "多云", "Partly cloudy");
+  if (code <= 48) return selectText(language, "有雾", "Foggy");
+  if (code <= 67) return selectText(language, "有雨", "Rain");
+  if (code <= 77) return selectText(language, "有雪", "Snow");
+  if (code <= 82) return selectText(language, "阵雨", "Showers");
+  return selectText(language, "雷雨", "Thunderstorms");
+}
+
+function occupancyAdminText(level: OccupancyLevel, language: Language) {
+  const labels: Record<OccupancyLevel, Record<Language, string>> = {
+    empty: { zh: "空闲", en: "Empty" },
+    low: { zh: "低", en: "Low" },
+    medium: { zh: "中", en: "Medium" },
+    high: { zh: "高", en: "High" },
+    unknown: { zh: "未知", en: "Unknown" },
+  };
+  return labels[level][language];
+}
+
+function sensorHealthText(health: string | undefined, language: Language) {
+  const labels: Record<string, Record<Language, string>> = {
+    ok: { zh: "正常", en: "Healthy" },
+    degraded: { zh: "降级", en: "Degraded" },
+    offline: { zh: "离线", en: "Offline" },
+    unknown: { zh: "未知", en: "Unknown" },
+  };
+  return (labels[health ?? "offline"] ?? labels.unknown)[language];
+}
+
+function sensorName(sensor: string, language: Language) {
+  const labels: Record<string, Record<Language, string>> = {
+    environment: { zh: "温湿度", en: "Temperature and humidity" },
+    thermal: { zh: "热阵列", en: "Thermal array" },
+    light: { zh: "光照", en: "Light" },
+    sound: { zh: "声音", en: "Sound" },
+    radar: { zh: "雷达", en: "Radar" },
+  };
+  return (labels[sensor] ?? { zh: sensor, en: sensor })[language];
+}
+
+function thermalColor(value: number) {
+  const stops = [
+    [8, 14, 35],
+    [25, 48, 108],
+    [30, 126, 164],
+    [79, 196, 116],
+    [243, 211, 72],
+    [241, 98, 43],
+    [255, 238, 218],
+  ];
+  const scaled = Math.max(0, Math.min(0.999, value)) * (stops.length - 1);
+  const index = Math.floor(scaled);
+  const mix = scaled - index;
+  const current = stops[index];
+  const next = stops[Math.min(stops.length - 1, index + 1)];
+  const channel = (position: number) => Math.round(current[position] + (next[position] - current[position]) * mix);
+  return `rgb(${channel(0)} ${channel(1)} ${channel(2)})`;
+}
+
+function formatNumber(value: number | null | undefined, unit: string, digits: number) {
+  return value == null || !Number.isFinite(value) ? "--" : `${value.toFixed(digits)}${unit}`;
+}
+
+function formatPercent(value: number | null | undefined) {
+  return value == null || !Number.isFinite(value) ? "--" : `${Math.round(value * 100)}%`;
+}
+
+function formatTime(value: string | undefined, locale: string) {
+  return value ? new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(value)) : "--";
+}
+
+function formatDate(value: string, locale: string) {
+  return new Intl.DateTimeFormat(locale, { year: "numeric", month: "long", day: "numeric" }).format(new Date(value));
+}
+
+function messageFrom(error: unknown, fallback: string, language: Language) {
+  return error instanceof Error ? localizeKnownMessage(error.message, language) : fallback;
 }
