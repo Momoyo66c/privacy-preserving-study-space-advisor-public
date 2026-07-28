@@ -19,6 +19,8 @@ class RecommendationContext:
     effective_preferences: RecommendationPreferences | None = None
     preferred_temperature_c: float | None = None
     explanations_enabled: bool = True
+    study_goal: str | None = None
+    explanation_limit: int | None = None
 
     @property
     def preferences(self) -> RecommendationPreferences:

@@ -1,5 +1,14 @@
-# Shared SensorWindow / EdgeObservation contract constants.
+"""Shared constants for online state inference and optional people counting.
+
+Unprefixed model constants belong to the Gate A rule classifier. People-count
+constants stay explicitly prefixed so training cannot silently change
+EdgeObservation model metadata.
+"""
+
 SCHEMA_VERSION = "1.0"
+MODEL_NAME = "edge-rule-baseline"
+MODEL_VERSION = "0.3.0"
+FEATURE_SCHEMA_VERSION = "1.0"
 SENSOR_HEALTH_VALUES = {"ok", "degraded", "offline", "not_configured"}
 
 TRAINING_LABELS = [
@@ -11,10 +20,14 @@ TRAINING_LABELS = [
 
 # Rule baseline features used by the EdgeObservation pipeline.
 DEFAULT_ORDERED_FEATURES = [
+    "thermal_frame_count",
     "thermal_hot_region_count",
     "thermal_missing",
+    "radar_latest_target_count",
     "radar_max_target_count",
-    "radar_mean_target_count",
+    "radar_active_frame_ratio",
+    "radar_mean_abs_speed_cm_s",
+    "radar_mean_distance_mm",
     "radar_missing",
     "sound_rms_mean",
     "sound_rms_std",
@@ -23,13 +36,15 @@ DEFAULT_ORDERED_FEATURES = [
     "light_lux",
     "temperature_c",
     "humidity_pct",
+    "environment_missing_count",
+    "temperature_comfort_delta",
+    "humidity_comfort_delta",
     "quality_completeness",
 ]
 
 # People-count model metadata.
-MODEL_NAME = "people-count-random-forest"
-MODEL_VERSION = "0.2.0"
-FEATURE_SCHEMA_VERSION = "1.0"  # kept for old rule-model compatibility
+PEOPLE_COUNT_MODEL_NAME = "people-count-random-forest"
+PEOPLE_COUNT_MODEL_VERSION = "0.2.0"
 PEOPLE_COUNT_FEATURE_SCHEMA_VERSION = "people-count-features-v2-static-heat-motion"
 
 # People-count feature schema.
@@ -95,3 +110,6 @@ FEATURE_NAMES = [
     "sensor_degraded_count",
     "window_seconds_actual",
 ]
+
+# Compatibility name used by the first people-count branch.
+PEOPLE_COUNT_FEATURE_NAMES = FEATURE_NAMES

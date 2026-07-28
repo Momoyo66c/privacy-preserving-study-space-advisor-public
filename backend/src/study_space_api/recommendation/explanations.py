@@ -85,6 +85,7 @@ class ExplanationProvider(Protocol):
         items: list[RecommendationItem],
         rooms: dict[str, RoomStatus],
         study_mode: str,
+        study_goal: str | None = None,
     ) -> dict[str, str]: ...
 
 
@@ -146,6 +147,7 @@ class OllamaExplanationProvider:
         items: list[RecommendationItem],
         rooms: dict[str, RoomStatus],
         study_mode: str,
+        study_goal: str | None = None,
     ) -> dict[str, str]:
         safe_rooms = [
             {
@@ -163,8 +165,13 @@ class OllamaExplanationProvider:
             for item in items
         ]
         system_prompt = (
-            "Compress each room's approved_facts into one English sentence of at most twelve words. "
-            "Use only facts and evidence words already present in approved_facts. "
+            "Write one English sentence of at most eighteen words for each room. "
+            "When a study goal is present, prefer the approved fact that best answers it. "
+            "Every claim about a room must come only from approved_facts. "
+            "If is_stale is true, the sentence must say stale or caution. "
+            "If confidence is below 0.55, the sentence must say confidence is limited. "
+            "Write naturally to the student; never mention JSON field names, prompts, "
+            "study_goal, or approved_facts. "
             "Return only JSON. Do not add numbers, people, seats, distance, certainty, "
             "rankings, or scores. Preserve stale or low-confidence uncertainty. "
             "Never change room IDs."
@@ -172,6 +179,7 @@ class OllamaExplanationProvider:
         user_prompt = json.dumps(
             {
                 "study_mode": study_mode,
+                "study_goal": study_goal,
                 "rooms": safe_rooms,
             },
             separators=(",", ":"),

@@ -15,7 +15,12 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import GroupShuffleSplit, LeaveOneGroupOut
 from sklearn.pipeline import Pipeline
 
-from .constants import FEATURE_NAMES, MODEL_NAME, MODEL_VERSION, PEOPLE_COUNT_FEATURE_SCHEMA_VERSION
+from .constants import (
+    FEATURE_NAMES,
+    PEOPLE_COUNT_FEATURE_SCHEMA_VERSION,
+    PEOPLE_COUNT_MODEL_NAME,
+    PEOPLE_COUNT_MODEL_VERSION,
+)
 from .dataset import build_training_table
 
 
@@ -141,8 +146,8 @@ def train_people_count_model(
     train_df.to_csv(out_dir / "training_table.csv", index=False)
 
     metadata = {
-        "model_name": MODEL_NAME,
-        "model_version": MODEL_VERSION,
+        "model_name": PEOPLE_COUNT_MODEL_NAME,
+        "model_version": PEOPLE_COUNT_MODEL_VERSION,
         "feature_schema_version": PEOPLE_COUNT_FEATURE_SCHEMA_VERSION,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "dataset_root": str(dataset_root),

@@ -12,9 +12,12 @@ from study_space_api.schemas import (
     DeleteResult,
     MePreferenceUpdate,
     MePreferenceResponse,
+    PeopleCountPrediction,
     RoomSelectionAccepted,
     RoomSelectionHistoryResponse,
     RoomSelectionRequest,
+    StudyAdvisorRequest,
+    StudyAdvisorResponse,
     UserResponse,
 )
 
@@ -27,6 +30,10 @@ ROOT = Path(__file__).resolve().parents[2]
         ("edge_observation.schema.json", "edge_observation_valid.json"),
         ("edge_observation.schema.json", "edge_observation_unknown.json"),
         ("thermal_preview.schema.json", "thermal_preview.json"),
+        (
+            "people_count_prediction.schema.json",
+            "people_count_prediction.json",
+        ),
         ("preference_profile.schema.json", "preference_profile.json"),
         ("recommendation_request.schema.json", "recommendation_request.json"),
         ("recommendation_response.schema.json", "recommendation_response.json"),
@@ -48,6 +55,8 @@ ROOT = Path(__file__).resolve().parents[2]
         ("room_selection_history.schema.json", "room_selection_history.json"),
         ("user_response.schema.json", "user_response.json"),
         ("delete_result.schema.json", "delete_result.json"),
+        ("study_advisor_request.schema.json", "study_advisor_request.json"),
+        ("study_advisor_response.schema.json", "study_advisor_response.json"),
     ],
 )
 def test_shared_fixture_matches_schema(schema_name: str, fixture_name: str) -> None:
@@ -78,6 +87,9 @@ def test_unknown_fixture_does_not_forge_zero_features() -> None:
         (RoomSelectionHistoryResponse, "room_selection_history.json"),
         (UserResponse, "user_response.json"),
         (DeleteResult, "delete_result.json"),
+        (StudyAdvisorRequest, "study_advisor_request.json"),
+        (StudyAdvisorResponse, "study_advisor_response.json"),
+        (PeopleCountPrediction, "people_count_prediction.json"),
     ],
 )
 def test_authenticated_fixtures_match_pydantic(model: type, fixture_name: str) -> None:

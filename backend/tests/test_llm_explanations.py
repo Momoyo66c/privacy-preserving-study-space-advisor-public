@@ -134,12 +134,23 @@ def test_ollama_provider_uses_structured_privacy_safe_request() -> None:
     items = recommendation_items(ranked)
     rooms = {item.room.room_id: item.room for item in ranked}
     assert run(provider.health())["status"] == "ok"
-    result = run(provider.explain(items, rooms, "quiet"))
+    result = run(
+        provider.explain(
+            items,
+            rooms,
+            "quiet",
+            study_goal="Focused exam revision in a quiet room",
+        )
+    )
     run(client.aclose())
     assert set(result) == {item.room_id for item in items}
     assert captured["model"] == "qwen3:4b"
     assert captured["think"] is False
     assert captured["format"]["additionalProperties"] is False
+    assert (
+        json.loads(captured["messages"][1]["content"])["study_goal"]
+        == "Focused exam revision in a quiet room"
+    )
     serialized = json.dumps(captured).lower()
     for forbidden in (
         "thermal_preview",

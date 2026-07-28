@@ -29,7 +29,9 @@ import {
   Settings,
   ShieldCheck,
   ScanLine,
+  Send,
   SlidersHorizontal,
+  Sparkles,
   Thermometer,
   UserCircle,
   Users,
@@ -48,14 +50,16 @@ import {
   loadMyPreferences,
   loadWeather,
   login,
+  loginAdministratorDemo,
   logout,
   recordRoomSelection,
   register,
   resetLearnedPreferences,
+  requestStudyAdvice,
   restoreSession,
   saveMyPreferences,
 } from "../api/client";
-import { catalogFor } from "../data/roomCatalog";
+import { catalogFor, ROOM_IMAGE_FALLBACK } from "../data/roomCatalog";
 import { LanguageProvider, localizeKnownMessage, selectText, useLanguage, type Language } from "../i18n";
 import type {
   DashboardData,
@@ -67,11 +71,12 @@ import type {
   RoomState,
   RoomStatus,
   StudyMode,
+  StudyAdvisorResponse,
   UserResponse,
   WeatherInfo,
 } from "../types/contracts";
 
-type StudentPage = "home" | "rooms" | "preferences" | "account";
+type StudentPage = "home" | "rooms" | "advisor" | "preferences" | "account";
 type AdminPage = "overview" | "monitor" | "rooms" | "system";
 type AuthRole = "student" | "admin";
 type FailedSelection = {
@@ -86,7 +91,7 @@ const roomStateText: Record<RoomState, Record<Language, string>> = {
   empty_or_low_activity: { zh: "安静空闲", en: "Quiet and available" },
   quiet_study_recommended: { zh: "适合专注学习", en: "Recommended for quiet study" },
   discussion_allowed: { zh: "适合小组讨论", en: "Suitable for group discussion" },
-  not_recommended_noisy_or_crowded: { zh: "当前较拥挤", en: "Currently crowded" },
+  not_recommended_noisy_or_crowded: { zh: "当前较拥挤", en: "Noisy" },
   unknown: { zh: "状态待确认", en: "Status pending" },
 };
 
@@ -97,6 +102,30 @@ const occupancyText: Record<OccupancyLevel, Record<Language, string>> = {
   high: { zh: "目前较拥挤", en: "Currently crowded" },
   unknown: { zh: "占用情况待确认", en: "Occupancy pending" },
 };
+
+export function displayRoomStateLabel(
+  room: Pick<RoomStatus, "room_state" | "features">,
+  language: Language,
+): string {
+  const relativeLight = room.features.light_relative_mean;
+  if (
+    typeof relativeLight === "number"
+    && Number.isFinite(relativeLight)
+    && relativeLight < 0.2
+  ) {
+    return "Closed";
+  }
+  return roomStateText[room.room_state][language];
+}
+
+function displayRoomStateTone(
+  room: Pick<RoomStatus, "room_state" | "features">,
+): string {
+  return room.features.light_relative_mean != null
+    && room.features.light_relative_mean < 0.2
+    ? "warning"
+    : stateTone(room.room_state);
+}
 
 const quotes = [
   { zh: "把注意力留给此刻，进度会在安静中发生。", en: "Give this moment your attention; progress often begins in quiet." },
@@ -174,7 +203,11 @@ function AppContent() {
 
   async function authenticate(role: AuthRole, mode: "login" | "register", username: string, password: string) {
     setError(null);
-    const result = mode === "register" ? await register({ username, password }) : await login({ username, password });
+    const result = role === "admin"
+      ? await loginAdministratorDemo({ username, password })
+      : mode === "register"
+        ? await register({ username, password })
+        : await login({ username, password });
     if (result.user.role !== role) {
       await logout();
       throw new Error(
@@ -373,7 +406,7 @@ function AuthPortal({
 
   function fillDemo() {
     setUsername(role === "admin" ? "admin" : "student");
-    setPassword(role === "admin" ? "admin1234" : "study1234");
+    setPassword(role === "admin" ? "admin12345" : "study12345");
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -419,11 +452,9 @@ function AuthPortal({
             <button type="button" className={role === "student" ? "active" : ""} onClick={() => switchRole("student")}>
               {choose("普通用户", "Student")}
             </button>
-            {!isRealApi ? (
-              <button type="button" className={role === "admin" ? "active" : ""} onClick={() => switchRole("admin")}>
-                {choose("管理员", "Administrator")}
-              </button>
-            ) : null}
+            <button type="button" className={role === "admin" ? "active" : ""} onClick={() => switchRole("admin")}>
+              {choose("管理员", "Administrator")}
+            </button>
           </div>
           <div className="auth-heading">
             <div className="auth-icon">{role === "admin" ? <Settings /> : <UserCircle />}</div>
@@ -475,7 +506,16 @@ function AuthPortal({
                 : choose("已有账户？返回登录", "Already have an account? Sign in")}
             </button>
           ) : null}
-          {!isRealApi ? (
+          {role === "admin" && isRealApi ? (
+            <p className="auth-demo-note">
+              <ShieldCheck size={16} />
+              {choose(
+                "管理员控制台是本机演示入口，会读取当前房间状态，但不代表生产管理员权限。",
+                "The administrator console is a local demo that can read current room status; it is not a production admin role.",
+              )}
+            </p>
+          ) : null}
+          {role === "admin" || !isRealApi ? (
             <button type="button" className="demo-fill" onClick={fillDemo}>
               {role === "admin"
                 ? choose("填入管理员演示账户", "Use administrator demo account")
@@ -607,6 +647,15 @@ function StudentApp({
             onChooseRoom={onChooseRoom}
           />
         ) : null}
+        {page === "advisor" ? (
+          <AIAdvisorView
+            user={user}
+            data={data}
+            request={request}
+            onOpenRoom={openRoom}
+            onChooseRoom={onChooseRoom}
+          />
+        ) : null}
         {page === "preferences" ? <PreferencesView request={request} busy={refreshing} onSave={onSavePreferences} /> : null}
         {page === "account" ? (
           <AccountView
@@ -644,6 +693,7 @@ function StudentNav({
   const items: Array<{ id: StudentPage; label: string; icon: ReactNode }> = [
     { id: "home", label: choose("首页", "Home"), icon: <Home size={18} /> },
     { id: "rooms", label: choose("教室", "Rooms"), icon: <DoorOpen size={18} /> },
+    { id: "advisor", label: choose("AI 助手", "AI Advisor"), icon: <Sparkles size={18} /> },
     { id: "preferences", label: choose("偏好", "Preferences"), icon: <SlidersHorizontal size={18} /> },
     { id: "account", label: choose("账户", "Account"), icon: <UserCircle size={18} /> },
   ];
@@ -762,6 +812,212 @@ function HomeView({
   );
 }
 
+function AIAdvisorView({
+  user,
+  data,
+  request,
+  onOpenRoom,
+  onChooseRoom,
+}: {
+  user: UserResponse;
+  data: DashboardData;
+  request: RecommendationRequest;
+  onOpenRoom: (roomId: string) => void;
+  onChooseRoom: (
+    roomId: string,
+    roomName: string,
+    recommendationRequestId: string | null,
+    source: FailedSelection["source"],
+  ) => Promise<void>;
+}) {
+  const { language, choose } = useLanguage();
+  const [goal, setGoal] = useState("");
+  const [submittedGoal, setSubmittedGoal] = useState("");
+  const [advice, setAdvice] = useState<StudyAdvisorResponse | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const currentRecommendations = data.recommendations.recommendations.slice(0, 3);
+  const focusItem = advice?.recommendations.find((item) => item.room_id === advice.focus_room_id) ?? null;
+  const focusRoom = focusItem ? data.rooms.find((room) => room.room_id === focusItem.room_id) ?? null : null;
+  const examples = [
+    choose("两个人讨论项目，需要允许交流且不太拥挤", "Two people need to discuss a project in a room that is not crowded"),
+    choose("准备明天的考试，需要安静、明亮并且有空位", "Exam revision in a quiet, bright room with good seat availability"),
+    choose("长时间写作，希望温湿度舒适、未来半小时保持宽松", "Long writing session with comfortable conditions and good availability"),
+  ];
+
+  async function analyze(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalized = goal.trim();
+    if (normalized.length < 3) {
+      setMessage(choose("请至少写一句今天的学习目标。", "Please describe today's study goal."));
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await requestStudyAdvice(
+        user,
+        normalized,
+        data.rooms.map((room) => room.room_id),
+      );
+      setSubmittedGoal(normalized);
+      setAdvice(result);
+    } catch (error) {
+      setMessage(messageFrom(error, choose("AI 助手暂时无法分析，请稍后重试。", "The AI advisor is temporarily unavailable. Please retry."), language));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="advisor-page" aria-labelledby="advisor-title">
+      <header className="advisor-hero">
+        <div>
+          <p className="overline">LOCAL LLM · PRIVACY FILTERED</p>
+          <h1 id="advisor-title">{choose("把今天的任务，交给空间来配合", "Match today's task to the right space")}</h1>
+          <p>{choose(
+            "先结合你保存的偏好和实时教室状态排序，再由本地 LLM 解释最适合你的选择。",
+            "Saved preferences and live room conditions determine the ranking; the local LLM explains the best fit.",
+          )}</p>
+        </div>
+        <div className="advisor-trust">
+          <ShieldCheck size={21} />
+          <span>
+            <strong>{choose("目标仅用于本次分析", "Goal used only for this analysis")}</strong>
+            <small>{choose("不保存输入，不发送身份、热帧或原始声音", "No stored prompt, identity, thermal frame or raw audio")}</small>
+          </span>
+        </div>
+      </header>
+
+      <div className="advisor-workspace">
+        <aside className="advisor-baseline" aria-label={choose("当前偏好推荐", "Current preference recommendations")}>
+          <div className="advisor-section-label">
+            <span>{choose("当前偏好", "Current preferences")}</span>
+            <strong>{studyModeLabel(request.study_mode, language)}</strong>
+          </div>
+          <h2>{choose("在你补充目标前", "Before adding today's goal")}</h2>
+          <p>{choose("这是服务器已保存偏好产生的前三名。", "These are the current top three from your saved preferences.")}</p>
+          <ol className="advisor-baseline-list">
+            {currentRecommendations.map((item) => {
+              const room = data.rooms.find((candidate) => candidate.room_id === item.room_id);
+              if (!room) return null;
+              const catalog = catalogFor(room, language);
+              return (
+                <li key={item.room_id}>
+                  <span>{item.rank.toString().padStart(2, "0")}</span>
+                  <button type="button" onClick={() => onOpenRoom(item.room_id)}>
+                    <strong>{catalog.displayName}</strong>
+                    <small>{qualitativeFit(item.score, language)} · {occupancyText[item.occupancy_level][language]}</small>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+          <div className="advisor-baseline-note">
+            <Sparkles size={17} />
+            <span>{choose("本次描述不会改写你保存的长期偏好。", "Your message will not overwrite saved long-term preferences.")}</span>
+          </div>
+        </aside>
+
+        <section className="advisor-conversation" aria-label={choose("AI 学习目标分析", "AI study-goal analysis")}>
+          <div className="advisor-thread" aria-live="polite">
+            <div className="advisor-assistant-message">
+              <span><Sparkles size={18} /></span>
+              <div>
+                <strong>{choose("今天准备做什么？", "What are you working on today?")}</strong>
+                <p>{choose(
+                  "告诉我任务类型、是否需要交流，以及你特别在意的安静、空位、光线或舒适度。",
+                  "Describe the task, whether conversation is needed, and any quietness, availability, lighting or comfort needs.",
+                )}</p>
+              </div>
+            </div>
+
+            {submittedGoal ? (
+              <div className="advisor-user-message">
+                <span>{submittedGoal}</span>
+              </div>
+            ) : null}
+
+            {busy ? (
+              <div className="advisor-thinking" role="status">
+                <span />
+                <span />
+                <span />
+                {choose("正在结合偏好和房间状态分析", "Analysing preferences and room conditions")}
+              </div>
+            ) : null}
+
+            {advice && focusItem && focusRoom ? (
+              <div className="advisor-result">
+                <div className="advisor-result-kicker">
+                  <span>{advice.advice_source === "llm" ? choose("本地 LLM 分析", "Local LLM analysis") : choose("规则降级结果", "Rule-based fallback")}</span>
+                  <span>{studyModeLabel(advice.interpreted_study_mode, language)}</span>
+                </div>
+                <div className="advisor-result-heading">
+                  <div>
+                    <small>{choose("今天最适合", "Best fit for today")}</small>
+                    <h2>{catalogFor(focusRoom, language).displayName}</h2>
+                  </div>
+                  <span className={`fit-label ${fitTone(focusItem.score)}`}>{qualitativeFit(focusItem.score, language)}</span>
+                </div>
+                <p className="advisor-answer">{advice.advisor_message}</p>
+                <div className="advisor-needs">
+                  {advice.interpreted_needs.map((need) => <span key={need}>{advisorNeedLabel(need, language)}</span>)}
+                </div>
+                <ul>
+                  {focusItem.reasons.slice(0, 3).map((reason) => <li key={reason}>{reason}</li>)}
+                </ul>
+                <div className="advisor-result-actions">
+                  <button type="button" className="primary-button" onClick={() => void onChooseRoom(focusRoom.room_id, focusRoom.name, advice.request_id, "recommendation")}>
+                    <CheckCircle2 size={18} />
+                    {choose("选择此教室", "Choose this room")}
+                  </button>
+                  <button type="button" className="secondary-button" onClick={() => onOpenRoom(focusRoom.room_id)}>
+                    {choose("查看教室详情", "View room details")}
+                    <ArrowRight size={17} />
+                  </button>
+                </div>
+                {advice.advice_source !== "llm" ? (
+                  <p className="advisor-fallback-note">
+                    {choose("本地 LLM 当前不可用，排名不受影响，已显示可验证的模板解释。", "The local LLM is unavailable; ranking is unchanged and a verifiable template explanation is shown.")}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          <form className="advisor-composer" onSubmit={(event) => void analyze(event)}>
+            <label htmlFor="study-goal">{choose("今天的学习目的与需求", "Today's study goal and needs")}</label>
+            <textarea
+              id="study-goal"
+              value={goal}
+              maxLength={500}
+              rows={4}
+              onChange={(event) => setGoal(event.currentTarget.value)}
+              placeholder={choose("例如：两个人讨论课程项目，希望不太拥挤，最好光线明亮。", "Example: Two people need to discuss a project in a bright room that is not crowded.")}
+            />
+            <div className="advisor-examples" aria-label={choose("示例需求", "Example needs")}>
+              {examples.map((example, index) => (
+                <button key={example} type="button" onClick={() => setGoal(example)}>
+                  {choose(`示例 ${index + 1}`, `Example ${index + 1}`)}
+                </button>
+              ))}
+            </div>
+            {message ? <p className="form-message error" role="alert">{message}</p> : null}
+            <div className="advisor-composer-footer">
+              <span>{goal.length}/500 · {choose("请勿输入姓名、学号、邮箱或密钥", "Do not enter names, IDs, email addresses or secrets")}</span>
+              <button type="submit" className="primary-button" disabled={busy}>
+                {busy ? <RefreshCw className="spin" size={18} /> : <Send size={18} />}
+                {choose("分析最佳教室", "Find the best room")}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function InfoTile({ icon, label, value, detail }: { icon: ReactNode; label: string; value: string; detail: string }) {
   return (
     <article className="info-tile">
@@ -772,6 +1028,20 @@ function InfoTile({ icon, label, value, detail }: { icon: ReactNode; label: stri
         <small>{detail}</small>
       </div>
     </article>
+  );
+}
+
+function RoomImage({ src, alt }: { src: string; alt: string }) {
+  const [resolvedSource, setResolvedSource] = useState(src);
+  useEffect(() => setResolvedSource(src), [src]);
+  return (
+    <img
+      src={resolvedSource}
+      alt={alt}
+      onError={() => {
+        if (resolvedSource !== ROOM_IMAGE_FALLBACK) setResolvedSource(ROOM_IMAGE_FALLBACK);
+      }}
+    />
   );
 }
 
@@ -797,7 +1067,7 @@ function RecommendationCard({
       </div>
       <div className="recommendation-main">
         <div>
-          <span className={`state-dot ${stateTone(room.room_state)}`}>{roomStateText[room.room_state][language]}</span>
+          <span className={`state-dot ${displayRoomStateTone(room)}`}>{displayRoomStateLabel(room, language)}</span>
           <h3>{catalog.displayName}</h3>
           <p>{catalog.shortLocation}</p>
         </div>
@@ -912,8 +1182,8 @@ function RoomsView({
           return (
             <button key={room.room_id} type="button" className="room-card" onClick={() => onSelectRoom(room.room_id)}>
               <span className="room-card-media">
-                <img src={catalog.image} alt={`${catalog.displayName} ${choose("教室", "room")}`} />
-                <span className={`room-card-state ${stateTone(room.room_state)}`}>{roomStateText[room.room_state][language]}</span>
+                <RoomImage src={catalog.image} alt={`${catalog.displayName} ${choose("教室", "room")}`} />
+                <span className={`room-card-state ${displayRoomStateTone(room)}`}>{displayRoomStateLabel(room, language)}</span>
               </span>
               <span className="room-card-body">
                 <span className="room-card-heading">
@@ -965,9 +1235,9 @@ function StudentRoomDetail({
         {choose("返回全部教室", "Back to all rooms")}
       </button>
       <div className="room-detail-hero">
-        <img src={catalog.image} alt={`${catalog.displayName} ${choose("教室内部", "interior")}`} />
+        <RoomImage src={catalog.image} alt={`${catalog.displayName} ${choose("教室内部", "interior")}`} />
         <div className="room-detail-overlay">
-          <span className={`state-dot ${stateTone(room.room_state)}`}>{roomStateText[room.room_state][language]}</span>
+          <span className={`state-dot ${displayRoomStateTone(room)}`}>{displayRoomStateLabel(room, language)}</span>
           <h1>{catalog.displayName}</h1>
           <p>{catalog.shortLocation}</p>
         </div>
@@ -991,7 +1261,9 @@ function StudentRoomDetail({
             />
             <dl className="student-status-list">
               <div><dt>{choose("当前空间", "Current occupancy")}</dt><dd>{occupancyText[room.occupancy_level][language]}</dd></div>
-              <div><dt>{choose("综合判断", "Overall assessment")}</dt><dd>{roomStateText[room.room_state][language]}</dd></div>
+              <div><dt>{choose("综合判断", "Overall assessment")}</dt><dd>{displayRoomStateLabel(room, language)}</dd></div>
+              <div><dt>{choose("当前温度", "Current temperature")}</dt><dd>{formatNumber(room.features.temperature_c, "°C", 1)}</dd></div>
+              <div><dt>{choose("当前湿度", "Current humidity")}</dt><dd>{formatNumber(room.features.humidity_pct, "%", 0)}</dd></div>
               <div><dt>{choose("未来半小时", "Next 30 minutes")}</dt><dd>{forecastText(recommendation?.forecast_30m ?? "unknown", language)}</dd></div>
               <div><dt>{choose("数据状态", "Data status")}</dt><dd>{room.is_stale ? choose("建议到场确认", "Verify on arrival") : choose("刚刚更新", "Updated just now")}</dd></div>
             </dl>
@@ -1369,7 +1641,9 @@ function LiveMonitor({ rooms }: { rooms: RoomStatus[] }) {
     return <EmptyPanel title={choose("没有可监测的教室", "No rooms available to monitor")} detail={choose("教室注册后会出现在这里。", "Registered rooms will appear here.")} />;
   }
   const catalog = catalogFor(room, language);
-  const peopleCount = snapshot?.people_count.available ? snapshot.people_count.predicted_people_count_rounded : snapshot?.thermal_analysis.estimated_people_count;
+  const peopleCount = snapshot?.people_count.available
+    ? snapshot.people_count.predicted_people_count_rounded
+    : null;
   const updatedAt = snapshot?.generated_at ? formatTime(snapshot.generated_at, locale) : "--";
 
   return (
@@ -1379,7 +1653,7 @@ function LiveMonitor({ rooms }: { rooms: RoomStatus[] }) {
           const entryCatalog = catalogFor(entry, language);
           return (
             <button key={entry.room_id} type="button" className={roomId === entry.room_id ? "active" : ""} onClick={() => setRoomId(entry.room_id)}>
-              <span className={`monitor-room-dot ${stateTone(entry.room_state)}`} />
+              <span className={`monitor-room-dot ${displayRoomStateTone(entry)}`} />
               <span><strong>{entryCatalog.displayName}</strong><small>{entryCatalog.shortLocation}</small></span>
             </button>
           );
@@ -1402,33 +1676,36 @@ function LiveMonitor({ rooms }: { rooms: RoomStatus[] }) {
       <div className="monitor-primary-grid">
         <section className="thermal-monitor-panel">
           <div className="monitor-panel-heading">
-            <div><span>MLX90640 · 32×24</span><h3>{choose("实时热成像与热区检测", "Live thermal view and heat-region detection")}</h3></div>
-            <span>{snapshot?.thermal_analysis.detected_region_count ?? 0} {choose("个检测框", "detection boxes")}</span>
+            <div><span>MLX90640 · 32×24</span><h3>{choose("实时隐私安全热成像", "Live privacy-safe thermal view")}</h3></div>
+            <span>{choose("无框 · 不识别身份", "No boxes · no identity recognition")}</span>
           </div>
           <ThermalCanvas snapshot={snapshot} />
           <div className="thermal-footer">
-            <span><ScanLine size={16} />{choose("检测框来自热区连通分析，不进行身份识别", "Boxes are generated by connected heat-region analysis, without identity recognition")}</span>
-            <span>{choose("阈值", "Threshold")} {formatNumber(snapshot?.thermal_analysis.threshold, "", 2)}</span>
+            <span><ScanLine size={16} />{choose("模块 2 每 5 秒对热阵列窗口估算人数，界面不显示检测框", "Module 2 estimates people once per 5-second thermal window; the interface draws no detection boxes")}</span>
+            <span>{choose("原始热帧不上云", "Raw frames stay on the edge")}</span>
           </div>
         </section>
 
         <aside className="monitor-side-stack">
           <section className="people-count-panel">
             <div className="sensor-card-icon"><Users /></div>
-            <span>{choose("模型预测人数", "Model-estimated occupancy")}</span>
-            <strong>{peopleCount ?? "--"}<small> {choose("人", "people")}</small></strong>
+            <span>{choose("当前实时人数", "Current live people count")}</span>
+            <strong data-testid="live-people-count">{peopleCount ?? "--"}<small> {choose("人", "people")}</small></strong>
             <p>{snapshot?.people_count.model
               ? `${snapshot.people_count.model.name} · ${snapshot.people_count.model.version}`
-              : choose("等待 Module 2 人数模型输出", "Waiting for the Module 2 occupancy model")}</p>
-            <div><span>{choose("置信度", "Confidence")}</span><em>{formatPercent(snapshot?.people_count.confidence)}</em></div>
+              : choose("等待 Module 2 实时人数模型输出，不使用热区数量替代", "Waiting for Module 2; heat-region counts are never used as a substitute")}</p>
+            <div className="people-count-meta"><span>{choose("人数置信度", "Count confidence")}</span><em>{formatPercent(snapshot?.people_count.confidence)}</em></div>
+            <div className="people-count-meta"><span>{choose("当前状态", "Current state")}</span><em className={displayRoomStateTone(room)}>{displayRoomStateLabel(room, language)}</em></div>
           </section>
           <section className="sound-monitor-panel">
             <div className="monitor-panel-heading compact">
-              <div><span>WINDOWS MICROPHONE</span><h3>{choose("声音强度", "Sound intensity")}</h3></div>
+              <div><span>LIVE FUSION INPUTS</span><h3>{choose("三类传感器依据", "Three sensor domains")}</h3></div>
               <Volume2 size={18} />
             </div>
             <SoundBars rms={snapshot?.sound_preview.rms ?? room.features.sound_rms_mean ?? 0} />
-            <div className="sound-reading"><strong>{formatNumber(snapshot?.sound_preview.rms ?? room.features.sound_rms_mean, "", 3)}</strong><span>Relative RMS</span></div>
+            <div className="sound-reading"><strong>{formatNumber(snapshot?.sound_preview.rms ?? room.features.sound_rms_mean, "", 3)}</strong><span>{choose("声音 · 相对 RMS", "Sound · relative RMS")}</span></div>
+            <div className="sound-reading"><strong>{formatNumber(room.features.light_relative_mean ?? room.features.light_lux, room.features.light_relative_mean != null ? "" : " lx", room.features.light_relative_mean != null ? 2 : 0)}</strong><span>{choose("环境 · 光照", "Environment · light")}</span></div>
+            <div className="sound-reading"><strong>{formatNumber(room.features.temperature_c, "°C", 1)} / {formatNumber(room.features.humidity_pct, "%", 0)}</strong><span>{choose("环境 · 温湿度", "Environment · climate")}</span></div>
           </section>
         </aside>
       </div>
@@ -1443,7 +1720,7 @@ function LiveMonitor({ rooms }: { rooms: RoomStatus[] }) {
       <section className="state-classifier-panel">
         <div className="monitor-panel-heading">
           <div><span>MODULE 2 · FOUR-STATE CLASSIFIER</span><h3>{choose("当前教室综合状态", "Current combined room state")}</h3></div>
-          <span className={`table-state ${stateTone(room.room_state)}`}>{roomStateText[room.room_state][language]}</span>
+          <span className={`table-state ${displayRoomStateTone(room)}`}>{displayRoomStateLabel(room, language)}</span>
         </div>
         <div className="state-classifier-grid">
           {([
@@ -1452,8 +1729,8 @@ function LiveMonitor({ rooms }: { rooms: RoomStatus[] }) {
             ["discussion_allowed", choose("允许讨论", "Discussion allowed"), choose("适合正常小组交流", "Suitable for normal group conversation")],
             ["not_recommended_noisy_or_crowded", choose("不推荐", "Not recommended"), choose("持续嘈杂或拥挤", "Persistently noisy or crowded")],
           ] as const).map(([state, label, detail]) => (
-            <div key={state} className={room.room_state === state ? `active ${stateTone(state)}` : ""}>
-              <span>{room.room_state === state ? <CheckCircle2 /> : <span />}</span>
+            <div key={state} className={room.features.light_relative_mean != null && room.features.light_relative_mean < 0.2 ? "" : room.room_state === state ? `active ${stateTone(state)}` : ""}>
+              <span>{room.features.light_relative_mean != null && room.features.light_relative_mean < 0.2 ? <span /> : room.room_state === state ? <CheckCircle2 /> : <span />}</span>
               <strong>{label}</strong>
               <small>{detail}</small>
             </div>
@@ -1472,10 +1749,9 @@ function LiveMonitor({ rooms }: { rooms: RoomStatus[] }) {
 }
 
 function ThermalCanvas({ snapshot }: { snapshot: LiveSensorSnapshotResponse | null }) {
-  const { language, choose } = useLanguage();
+  const { choose } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const preview = snapshot?.thermal_preview;
-  const boxes = snapshot?.thermal_analysis.boxes ?? [];
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1498,29 +1774,11 @@ function ThermalCanvas({ snapshot }: { snapshot: LiveSensorSnapshotResponse | nu
       context.fillStyle = thermalColor(value);
       context.fillRect((index % previewWidth) * cellWidth, Math.floor(index / previewWidth) * cellHeight, Math.ceil(cellWidth), Math.ceil(cellHeight));
     });
-    boxes.forEach((box, index) => {
-      const x = box.x * width;
-      const y = box.y * height;
-      const boxWidth = box.width * width;
-      const boxHeight = box.height * height;
-      context.strokeStyle = "#7be7ff";
-      context.lineWidth = 3;
-      context.strokeRect(x, y, boxWidth, boxHeight);
-      context.fillStyle = "rgba(3, 12, 20, 0.82)";
-      context.fillRect(x, Math.max(0, y - 25), language === "zh" ? 96 : 142, 25);
-      context.fillStyle = "#dffaff";
-      context.font = "600 13px system-ui";
-      context.fillText(
-        `${choose("热区", "Region")} ${index + 1} · ${Math.round(box.confidence * 100)}%`,
-        x + 7,
-        Math.max(17, y - 8),
-      );
-    });
-  }, [preview, boxes, choose, language]);
+  }, [preview]);
 
   return (
     <div className="thermal-canvas-wrap">
-      <canvas ref={canvasRef} aria-label={choose("实时热成像检测画面", "Live thermal detection view")} />
+      <canvas ref={canvasRef} aria-label={choose("实时隐私安全热成像画面", "Live privacy-safe thermal view")} />
       {!preview?.available ? (
         <div className="thermal-empty">
           <ScanLine size={28} />
@@ -1588,7 +1846,7 @@ function AdminRoomTable({ rooms, compact = false }: { rooms: RoomStatus[]; compa
             const catalog = catalogFor(room, language);
             return <tr key={room.room_id}>
               <td><strong>{catalog.displayName}</strong><small>{catalog.shortLocation}</small></td>
-              <td><span className={`table-state ${stateTone(room.room_state)}`}>{roomStateText[room.room_state][language]}</span></td>
+              <td><span className={`table-state ${displayRoomStateTone(room)}`}>{displayRoomStateLabel(room, language)}</span></td>
               <td>{occupancyAdminText(room.occupancy_level, language)}</td>
               <td>{formatNumber(room.suitability_score, "", 0)}</td>
               <td>{formatPercent(room.confidence)}</td>
@@ -1733,6 +1991,30 @@ function qualitativeFit(score: number, language: Language) {
   if (score >= 80) return selectText(language, "非常适合你", "Excellent match");
   if (score >= 58) return selectText(language, "比较适合", "Good match");
   return selectText(language, "可以作为备选", "Suitable alternative");
+}
+
+function studyModeLabel(mode: StudyMode, language: Language) {
+  if (mode === "quiet") return selectText(language, "安静学习", "Quiet study");
+  if (mode === "discussion") return selectText(language, "小组讨论", "Group discussion");
+  return selectText(language, "灵活学习", "Flexible study");
+}
+
+function advisorNeedLabel(
+  need: StudyAdvisorResponse["interpreted_needs"][number],
+  language: Language,
+) {
+  const labels: Record<
+    StudyAdvisorResponse["interpreted_needs"][number],
+    { zh: string; en: string }
+  > = {
+    quiet: { zh: "安静", en: "Quiet" },
+    discussion: { zh: "允许讨论", en: "Discussion" },
+    low_occupancy: { zh: "空位优先", en: "Availability" },
+    bright: { zh: "明亮", en: "Bright" },
+    comfortable: { zh: "环境舒适", en: "Comfort" },
+    saved_preferences: { zh: "沿用保存偏好", en: "Saved preferences" },
+  };
+  return labels[need][language];
 }
 
 function fitTone(score: number) {

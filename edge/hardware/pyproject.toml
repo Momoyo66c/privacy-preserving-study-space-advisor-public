@@ -44,6 +44,7 @@ study-space-calibrate-light = "study_space_hardware.light_calibration_cli:main"
 study-space-calibrate-sound = "study_space_hardware.sound_calibration_cli:main"
 study-space-diagnose-sound = "study_space_hardware.sound_diagnostic_cli:main"
 study-space-stream-remote-sound = "study_space_hardware.remote_sound_agent:main"
+study-space-supervise-remote-sound = "study_space_hardware.remote_sound_supervisor:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

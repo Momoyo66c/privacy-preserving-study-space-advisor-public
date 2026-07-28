@@ -64,6 +64,9 @@ The current synthetic backtest favors persistence over recent averaging. See `PE
 - Logs and recommendation records contain IDs and summaries only.
 - Configure `EDGE_API_TOKEN` before accepting writes beyond localhost.
 - This prototype has local user authentication but no password recovery, school SSO, administrator console, or multi-tenant role model.
+- The Module 4-owned `POST /api/v1/me/study-advisor` route is wired through the
+  existing authenticated recommendation boundary. Study goals are transient,
+  privacy-filtered and excluded from recommendation audit JSON.
 - The quantitative live read is not role-protected in this prototype. The
   frontend administrator view is a mock-mode demonstration; keep telemetry on a
   trusted network until a production authorization model exists.
@@ -75,8 +78,8 @@ The current synthetic backtest favors persistence over recent averaging. See `PE
 - Synthetic history is for demonstrations and does not validate forecast accuracy.
 - Repository-level CI now includes dedicated Python 3.11 test/migration and Docker health-check jobs; `CI_HANDOFF.md` documents the required branch-protection checks.
 - Docker Desktop 4.82.0 / Engine 29.6.1 was smoke-tested locally on 2026-07-16: the Python 3.11 image built, migrations completed, the single Uvicorn worker became healthy, and the temporary container was removed.
-- The integrated account, selection-learning, Gate C, weather and live-preview
-  suite currently contains 141 backend tests.
+- The integrated account, selection-learning, Gate C, weather, live-preview and
+  study-advisor suite currently contains 150 backend tests.
 - Module 2 must continue to mark missing/unhealthy features accurately so the
   rule adapter can omit and renormalize those dimensions.
 - Module 4 now owns the formal ranking and template/Ollama explanation package

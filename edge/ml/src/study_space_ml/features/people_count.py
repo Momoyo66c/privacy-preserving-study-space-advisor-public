@@ -209,7 +209,11 @@ def thermal_motion_summary_from_frames(frames_3d: np.ndarray) -> dict[str, float
     }
 
 
-def _thermal_features(window: dict[str, Any], session_dir: str | Path | None) -> dict[str, float]:
+def _thermal_features(
+    window: dict[str, Any],
+    session_dir: str | Path | None,
+    thermal_frames: Any | None = None,
+) -> dict[str, float]:
     thermal = window.get("thermal") or {}
     health = thermal.get("health")
     out = {
@@ -242,17 +246,27 @@ def _thermal_features(window: dict[str, Any], session_dir: str | Path | None) ->
     if health != "ok":
         return out
 
-    p = resolve_frames_ref(session_dir, thermal.get("frames_ref"))
-    if p is None or not p.exists():
-        return out
+    frames: np.ndarray | None = None
+    if thermal_frames is not None:
+        try:
+            frames = np.asarray(thermal_frames, dtype=float)
+        except (TypeError, ValueError):
+            frames = None
+    else:
+        p = resolve_frames_ref(session_dir, thermal.get("frames_ref"))
+        if p is not None and p.exists():
+            try:
+                with np.load(p) as data:
+                    frames = data["frames"].astype(float)
+            except Exception:
+                frames = None
 
-    try:
-        with np.load(p) as data:
-            frames = data["frames"].astype(float)
-    except Exception:
+    if frames is None:
+        out["thermal_available"] = 0.0
         return out
 
     if frames.size == 0:
+        out["thermal_available"] = 0.0
         return out
 
     frames_3d = _reshape_thermal_frames(frames)
@@ -392,6 +406,7 @@ def extract_window_features(
     *,
     session_dir: str | Path | None = None,
     relative: dict[str, Any] | None = None,
+    thermal_frames: Any | None = None,
 ) -> dict[str, Any]:
     row: dict[str, Any] = {
         "session_id": Path(session_dir).name if session_dir else window.get("session_id", ""),
@@ -402,7 +417,7 @@ def extract_window_features(
         "window_end": window.get("window_end", ""),
     }
 
-    row.update(_thermal_features(window, session_dir))
+    row.update(_thermal_features(window, session_dir, thermal_frames))
     row.update(_radar_features(window))
     row.update(_sound_light_features(window, relative))
     row.update(_environment_quality_features(window))

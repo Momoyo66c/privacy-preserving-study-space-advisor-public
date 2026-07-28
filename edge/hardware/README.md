@@ -338,12 +338,15 @@ PSSA_SENSOR_CONFIG=config/esp32-hub-windows-mic.example.yaml
 PSSA_REMOTE_SOUND_TOKEN=<32-byte-random-secret>
 ```
 
-同一个 token 只放入当前 Windows 进程环境，不写入仓库。PowerShell 可生成：
+同一个 token 不写入仓库。若只做一次手动诊断，可放入当前 PowerShell
+进程；若启用下面的登录自启动任务，则写入当前 Windows 用户的环境变量：
 
 ```powershell
 $bytes = New-Object byte[] 32
 [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
-$env:PSSA_REMOTE_SOUND_TOKEN = [Convert]::ToBase64String($bytes)
+$token = [Convert]::ToBase64String($bytes)
+$env:PSSA_REMOTE_SOUND_TOKEN = $token
+[Environment]::SetEnvironmentVariable("PSSA_REMOTE_SOUND_TOKEN", $token, "User")
 ```
 
 更新 Pi 服务配置后重载并启动：
@@ -354,22 +357,47 @@ systemctl --user restart pssa-dashboard-bridge.service
 systemctl --user status pssa-dashboard-bridge.service --no-pager
 ```
 
-在 Windows 第一个 PowerShell 窗口建立加密隧道：
+Windows 长期运行推荐使用一个 supervisor 同时管理 SSH 隧道和麦克风代理。
+它在任一子进程退出、网络切换或连续三次发送失败后重建整条链路，不需要保留
+两个前台终端。虚拟环境固定在项目的非 C 盘目录，`.gitignore` 已排除：
+
+```powershell
+cd D:\NUS_SoC2026\Privacy-Preserving-Study-Space-Advisor\edge\hardware
+py -3.11 -m venv .venv-windows
+.\.venv-windows\Scripts\python.exe -m pip install -e ".[remote-sound]"
+.\.venv-windows\Scripts\python.exe -m study_space_hardware.remote_sound_supervisor `
+  --ssh-host raspberrypi.local `
+  --identity-file "$env:USERPROFILE\.ssh\id_ed25519"
+```
+
+确认前台运行正常后，可注册当前用户登录时自动启动的任务。任务不会要求管理员
+权限，token 只从用户环境读取，不出现在命令行、任务参数或日志中：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_windows_remote_sound_task.ps1 `
+  -PiHost raspberrypi.local
+
+Get-ScheduledTask -TaskName PSSA-Windows-Remote-Sound
+Get-Content "$env:LOCALAPPDATA\PSSA\remote-sound-supervisor.log" -Tail 30
+
+# 移除自启动任务
+powershell -ExecutionPolicy Bypass -File scripts\install_windows_remote_sound_task.ps1 `
+  -PiHost raspberrypi.local -Uninstall
+```
+
+`LastTaskResult=267009`（十六进制 `0x41301`）表示任务仍在运行，不是失败。
+supervisor 启动时会在日志达到 5 MiB 后轮转并只保留一个 previous 文件；
+长期模式不记录每秒的成功事件，只记录启动、重连和错误，不包含 token、原始
+音频或逐采样波形。
+
+需要排查设备时仍可使用手动模式。先建立隧道，再在另一个窗口启动有限诊断：
 
 ```powershell
 ssh -N -L 18766:127.0.0.1:8766 pi@PI_IP
-```
-
-第二个窗口安装最小依赖、只读列出输入设备，然后再启动采集：
-
-```powershell
-cd edge\hardware
-python -m pip install -e ".[remote-sound]"
-python scripts\stream_remote_sound.py --list-devices
-python scripts\stream_remote_sound.py `
-  --url http://127.0.0.1:18766/v1/sound-features `
-  --room-id room_a `
-  --device-id windows-laptop-mic
+.\.venv-windows\Scripts\python.exe scripts\stream_remote_sound.py --list-devices
+.\.venv-windows\Scripts\python.exe scripts\stream_remote_sound.py `
+  --windows 10 `
+  --diagnostic-summary
 ```
 
 `--list-devices` 不打开麦克风。正式命令第一次运行时 Windows 可能要求允许
@@ -378,15 +406,9 @@ python scripts\stream_remote_sound.py `
 约 13 秒显示 `offline` 和空声音值。笔记本必须与传感器留在同一教室且位置
 固定；Windows 自动增益、降噪或移动设备会改变相对标尺。
 
-首次部署可用有限窗口诊断确认麦克风确实响应。命令只在内存累计
-RMS/标准差/峰值，并在结束时打印最小值、中位数、p95 和最大值，不写文件：
-
-```powershell
-python scripts\stream_remote_sound.py `
-  --device 1 `
-  --windows 10 `
-  --diagnostic-summary
-```
+有限窗口诊断只在内存累计 RMS/标准差/峰值，并在结束时打印最小值、中位数、
+p95 和最大值，不写文件。设备编号会随 Windows 音频设备变化，长期任务默认
+跟随系统默认输入；只有在默认输入选择错误时才显式传入 `--device`。
 
 Pi 对收到的原始归一化 RMS/峰值应用固定的相对对数曲线，使普通声音变化在
 0–1 显示上可见；原始归一化值只保留在当前内存样本中用于诊断。该曲线没有
@@ -424,7 +446,10 @@ ssh -N -L 8765:127.0.0.1:8765 \
 
 ### 接入现有数据展示前后端
 
-树莓派桥接程序直接复用后端已有的 observation 和 thermal-preview 写接口。热预览按生产配置约 2 FPS 更新；温湿度、声音、热区数量和健康状态每 5 秒提交一次。桥接程序不做模块 02 推理，因此房间状态保持 `unknown`。
+树莓派桥接程序直接复用后端已有的 observation 和 thermal-preview 写接口。
+单独运行模块 1 的 `stream_dashboard.py` 时，它只负责硬件与降级联调：热预览按
+生产配置约 2 FPS 更新，每个完成的 5 秒窗口只提交一次 `unknown`
+Observation，不伪造人数或教室状态。
 
 ```bash
 cd /home/pi/privacy-study-space-advisor/edge/hardware
@@ -433,6 +458,22 @@ PYTHONPATH=src .venv/bin/python scripts/stream_dashboard.py \
   --config config/esp32-hub.example.yaml \
   --backend-url http://MAC_LAN_IP:8000
 ```
+
+完整展示链应从仓库根目录运行模块 2 的组合入口。它复用同一个模块 1
+采集器，在内存中把完成窗口交给人数模型和状态融合器，然后分别发布人数预测、
+融合 Observation 和持续更新的热图/声音预览：
+
+```bash
+PYTHONPATH=edge/hardware/src:edge/ml/src \
+  edge/hardware/.venv/bin/python edge/ml/scripts/stream_live.py \
+  --config /home/pi/.config/pssa/esp32-hub-windows-mic.local.yaml \
+  --backend-url http://WINDOWS_LAN_IP:8000 \
+  --people-count-artifact /home/pi/.config/pssa/models/people_count_rf_motion_v0_2
+```
+
+高频预览和完成窗口使用不同发布槽；下一帧预览不会覆盖尚未发送的模型摘要。
+原始 32 × 24 热阵列只在当前进程参与推理和归一化预览，不进入 Observation、
+人数负载、推荐上下文或日志。
 
 后端启用 `EDGE_API_TOKEN` 时，在 Pi 上设置同名环境变量。HW-486 无论是否完成
 相对标定，桥接程序都坚持发送 `light_lux=null`；页面显示 `-- lx` 属于预期

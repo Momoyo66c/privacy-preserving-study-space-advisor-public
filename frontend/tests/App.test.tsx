@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { App } from "../src/app/App";
+import { App, displayRoomStateLabel } from "../src/app/App";
+import { mockRooms } from "../src/mocks/mockData";
 
 describe("App", () => {
   beforeEach(() => {
@@ -25,6 +26,29 @@ describe("App", () => {
           condition: "Partly Cloudy",
         }),
       }),
+    );
+  });
+
+  it("forces the displayed room state to Closed below relative light 0.2", () => {
+    const darkRoom = {
+      ...mockRooms[0],
+      features: {
+        ...mockRooms[0].features,
+        light_relative_mean: 0.19,
+      },
+    };
+    const thresholdRoom = {
+      ...darkRoom,
+      features: {
+        ...darkRoom.features,
+        light_relative_mean: 0.2,
+      },
+    };
+
+    expect(displayRoomStateLabel(darkRoom, "en")).toBe("Closed");
+    expect(displayRoomStateLabel(darkRoom, "zh")).toBe("Closed");
+    expect(displayRoomStateLabel(thresholdRoom, "en")).toBe(
+      "Recommended for quiet study",
     );
   });
 
@@ -67,12 +91,19 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "发现教室" })).toBeInTheDocument();
     expect(document.querySelectorAll(".room-card")).toHaveLength(9);
+    const roomImages = Array.from(document.querySelectorAll<HTMLImageElement>(".room-card img"));
+    expect(roomImages).toHaveLength(9);
+    expect(roomImages.every((image) => !image.src.includes("nus-college-classroom"))).toBe(true);
+    fireEvent.error(roomImages[1]);
+    expect(roomImages[1].src).toContain("/rooms/nus-erc-alr.jpg");
     expect(screen.getByRole("button", { name: /ERC The Study/ })).toBeInTheDocument();
     expect(screen.queryByText("当前教室状态")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /ERC The Study/ }));
     expect(await screen.findByRole("heading", { name: "ERC The Study" })).toBeInTheDocument();
     expect(screen.getByText("8 College Avenue West, Singapore 138608")).toBeInTheDocument();
     expect(screen.getByText("与你的偏好匹配度")).toBeInTheDocument();
+    expect(screen.getByText("24.0°C")).toBeInTheDocument();
+    expect(screen.getByText("52%")).toBeInTheDocument();
   });
 
   it("routes administrator credentials to the quantitative console", async () => {
@@ -86,8 +117,11 @@ describe("App", () => {
     expect(screen.getByText("量化数据仅在管理员端展示")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "实时监测" }));
     expect(await screen.findByRole("heading", { name: "实时传感器监测" })).toBeInTheDocument();
-    expect(await screen.findByText("模型预测人数")).toBeInTheDocument();
-    expect(screen.getByText("实时热成像与热区检测")).toBeInTheDocument();
+    expect(await screen.findByText("当前实时人数")).toBeInTheDocument();
+    expect(screen.getByTestId("live-people-count")).toHaveTextContent("--");
+    expect(screen.getByText("实时隐私安全热成像")).toBeInTheDocument();
+    expect(screen.getByText("无框 · 不识别身份")).toBeInTheDocument();
+    expect(screen.queryByText(/个检测框/)).not.toBeInTheDocument();
     expect(screen.getByText("允许讨论")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "教室数据" }));
     expect(await screen.findByRole("heading", { name: "教室量化数据" })).toBeInTheDocument();
@@ -129,8 +163,27 @@ describe("App", () => {
     expect(screen.getByText("Quantitative data is restricted to administrators")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Live monitor" }));
     expect(await screen.findByRole("heading", { name: "Live sensor monitoring" })).toBeInTheDocument();
-    expect(screen.getByText("Model-estimated occupancy")).toBeInTheDocument();
-    expect(screen.getByText("Live thermal view and heat-region detection")).toBeInTheDocument();
+    expect(screen.getByText("Current live people count")).toBeInTheDocument();
+    expect(screen.getByText("Live privacy-safe thermal view")).toBeInTheDocument();
+    expect(screen.getByText("No boxes · no identity recognition")).toBeInTheDocument();
     expect(screen.getByText("Discussion allowed")).toBeInTheDocument();
+  });
+
+  it("uses today's goal in a dedicated AI advisor page without changing saved preferences", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "切换为英文" }));
+    await user.click(screen.getByRole("button", { name: "Use student demo account" }));
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await user.click((await screen.findAllByRole("button", { name: "AI Advisor" }))[0]);
+
+    expect(await screen.findByRole("heading", { name: "Match today's task to the right space" })).toBeInTheDocument();
+    expect(screen.getByText("These are the current top three from your saved preferences.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Example 1" }));
+    await user.click(screen.getByRole("button", { name: "Find the best room" }));
+
+    expect(await screen.findByText("Best fit for today")).toBeInTheDocument();
+    expect(screen.getByText("Group discussion")).toBeInTheDocument();
+    expect(screen.getByText(/will not overwrite saved long-term preferences/i)).toBeInTheDocument();
   });
 });

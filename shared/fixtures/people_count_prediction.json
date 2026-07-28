@@ -1,0 +1,20 @@
+{
+  "schema_version": "people_count_prediction.v1",
+  "prediction_id": "6f52d8e18f1a8e98c4de12ab90",
+  "window_id": "room_a-20260727T120000.000Z",
+  "room_id": "room_a",
+  "device_id": "pi5-room-a",
+  "observed_at": "2026-07-27T12:00:05Z",
+  "predicted_people_count": 1.08,
+  "predicted_people_count_rounded": 1,
+  "occupancy_level": "low",
+  "confidence": 0.81,
+  "model": {
+    "name": "people-count-random-forest",
+    "version": "0.2.0",
+    "feature_schema_version": "people-count-features-v2-static-heat-motion"
+  },
+  "warnings": [
+    "DEMO_MODEL_TRAINED_FOR_ZERO_TO_TWO_PEOPLE"
+  ]
+}

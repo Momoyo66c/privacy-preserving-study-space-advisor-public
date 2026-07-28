@@ -21,7 +21,20 @@ async function mockWeather(page: Page) {
   );
 }
 
-async function openStudentPage(page: Page, name: "首页" | "教室" | "偏好" | "账户" | "Home" | "Rooms" | "Preferences" | "Account") {
+async function openStudentPage(
+  page: Page,
+  name:
+    | "首页"
+    | "教室"
+    | "AI 助手"
+    | "偏好"
+    | "账户"
+    | "Home"
+    | "Rooms"
+    | "AI Advisor"
+    | "Preferences"
+    | "Account",
+) {
   const menu = page.getByRole("button", { name: /打开菜单|Open menu/ });
   if (await menu.isVisible()) await menu.click();
   await page.getByRole("button", { name, exact: true }).first().click();
@@ -101,4 +114,23 @@ test("language control switches and persists the English student experience", as
   await page.reload();
   await expect(page.getByRole("button", { name: "Switch to Chinese" })).toBeVisible();
   await expect(page.getByText("Recommended for you")).toBeVisible();
+});
+
+test("AI advisor interprets a one-off goal without replacing saved preferences", async ({ page }) => {
+  await mockWeather(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "切换为英文" }).click();
+  await page.getByRole("button", { name: "Use student demo account" }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+
+  await expect(page.getByText("Recommended for you")).toBeVisible();
+  await openStudentPage(page, "AI Advisor");
+  await expect(page.getByRole("heading", { name: "Match today's task to the right space" })).toBeVisible();
+  await expect(page.getByText("These are the current top three from your saved preferences.")).toBeVisible();
+  await page.getByRole("button", { name: "Example 1" }).click();
+  await page.getByRole("button", { name: "Find the best room" }).click();
+
+  await expect(page.getByText("Best fit for today")).toBeVisible();
+  await expect(page.getByText("Group discussion")).toBeVisible();
+  await expect(page.getByText(/will not overwrite saved long-term preferences/i)).toBeVisible();
 });

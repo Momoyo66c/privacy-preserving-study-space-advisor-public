@@ -196,6 +196,34 @@ export interface RecommendationResponse {
   warnings: string[];
 }
 
+export type InterpretedStudyNeed =
+  | "quiet"
+  | "discussion"
+  | "low_occupancy"
+  | "bright"
+  | "comfortable"
+  | "saved_preferences";
+
+export interface StudyAdvisorRequest {
+  schema_version: "1.0";
+  study_goal: string;
+  candidate_room_ids: string[];
+}
+
+export interface StudyAdvisorResponse {
+  schema_version: "1.0";
+  request_id: string;
+  generated_at: string;
+  interpreted_study_mode: StudyMode;
+  interpreted_needs: InterpretedStudyNeed[];
+  applied_preferences: RecommendationPreferences;
+  focus_room_id: string | null;
+  advisor_message: string;
+  advice_source: "stub" | "template" | "llm";
+  recommendations: RecommendationItem[];
+  warnings: string[];
+}
+
 export interface UserResponse {
   schema_version: "1.0";
   user_id: string;

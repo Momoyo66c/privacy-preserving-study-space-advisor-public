@@ -10,6 +10,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 from study_space_hardware.dashboard_bridge import (
     DashboardClient,
+    LatestSnapshotPublisher,
     LiveSnapshotBuilder,
     SensorDashboardBridge,
     count_hot_regions,
@@ -19,6 +20,7 @@ from study_space_hardware.bootstrap import build_orchestrator
 from study_space_hardware.clock import ManualClock
 from study_space_hardware.config import load_config
 from study_space_hardware.models import (
+    CollectedWindow,
     SensorHealth,
     SensorHealthReport,
     SensorSample,
@@ -55,10 +57,18 @@ class NonThermalOrchestrator:
     def __init__(self) -> None:
         self.drivers = {"thermal": object(), "sound": object()}
         self.closed = False
+        self.applied_states: list[str] = []
 
-    def run_window(self, *, on_sample) -> object:
+    def run_window(self, *, on_sample) -> CollectedWindow:
         on_sample(_sample("sound", {"rms": 0.04, "peak": 0.12}))
-        return type("Window", (), {"payload": {"quality": {"completeness": 0.5}}})()
+        reports = self.health()
+        return CollectedWindow(
+            payload={
+                "window_id": "window-1",
+                "quality": {"completeness": 0.5},
+            },
+            health_reports=reports,
+        )
 
     def health(self) -> dict[str, SensorHealthReport]:
         return {
@@ -82,6 +92,9 @@ class NonThermalOrchestrator:
 
     def close(self) -> None:
         self.closed = True
+
+    def apply_room_state(self, room_state: str) -> None:
+        self.applied_states.append(room_state)
 
 
 def _sample(sensor: str, values: dict) -> SensorSample:
@@ -275,7 +288,11 @@ def test_bridge_submits_window_without_a_thermal_frame() -> None:
 
     assert completed == 1
     assert publisher.payloads[0]["thermal_preview"] is None
-    assert publisher.payloads[0]["observation"]["features"]["sound_rms_mean"] == 0.04
+    summaries = [
+        payload for payload in publisher.payloads if payload.get("observation")
+    ]
+    assert summaries[0]["observation"]["features"]["sound_rms_mean"] == 0.04
+    assert orchestrator.applied_states == ["unknown"]
     assert orchestrator.closed is True
 
 
@@ -316,3 +333,92 @@ def test_one_process_streams_and_writes_the_same_sensor_window(tmp_path: Path) -
     assert publisher.payloads
     assert (session_path / "windows.jsonl").is_file()
     assert (session_path / "relative_features.jsonl").is_file()
+
+
+def test_completed_window_processor_replaces_fallback_observation() -> None:
+    orchestrator = NonThermalOrchestrator()
+    publisher = RecordingPublisher()
+
+    def process(window: CollectedWindow, snapshot: dict) -> dict:
+        result = dict(snapshot)
+        result["people_count"] = {
+            "schema_version": "people_count_prediction.v1",
+            "room_id": "room_a",
+        }
+        result["observation"] = {
+            **snapshot["observation"],
+            "room_state": "discussion_allowed",
+            "occupancy_level": "low",
+            "confidence": 0.8,
+            "model": {
+                "name": "module2-live-sensor-fusion",
+                "version": "1.0.0",
+                "feature_schema_version": "live-fusion.v1",
+            },
+            "warnings": [],
+        }
+        return result
+
+    bridge = SensorDashboardBridge(
+        orchestrator=orchestrator,  # type: ignore[arg-type]
+        builder=LiveSnapshotBuilder(room_id="room_a", device_id="pi5-a"),
+        publisher=publisher,  # type: ignore[arg-type]
+        window_processor=process,
+    )
+
+    bridge.run(window_count=1)
+
+    summaries = [
+        payload for payload in publisher.payloads if payload.get("observation")
+    ]
+    assert len(summaries) == 1
+    assert summaries[0]["people_count"]["room_id"] == "room_a"
+    assert summaries[0]["observation"]["room_state"] == "discussion_allowed"
+    assert orchestrator.applied_states == ["discussion_allowed"]
+
+
+class RecordingDashboardClient:
+    def __init__(self) -> None:
+        self.previews: list[dict] = []
+        self.sound_previews: list[dict] = []
+        self.people_counts: list[dict] = []
+        self.observations: list[dict] = []
+
+    def publish_preview(self, payload: dict) -> None:
+        self.previews.append(payload)
+
+    def publish_sound_preview(self, payload: dict) -> None:
+        self.sound_previews.append(payload)
+
+    def publish_people_count(self, payload: dict) -> None:
+        self.people_counts.append(payload)
+
+    def publish_observation(self, payload: dict) -> None:
+        self.observations.append(payload)
+
+
+def test_publisher_does_not_drop_completed_window_summary() -> None:
+    client = RecordingDashboardClient()
+    publisher = LatestSnapshotPublisher(client)  # type: ignore[arg-type]
+    publisher.start()
+    publisher.submit(
+        {
+            "people_count": {"prediction_id": "prediction-1"},
+            "observation": {"observation_id": "observation-1"},
+        }
+    )
+    publisher.submit(
+        {
+            "thermal_preview": {
+                "captured_at": "2026-07-22T08:30:01.000Z",
+            }
+        }
+    )
+    publisher.close()
+
+    assert [item["prediction_id"] for item in client.people_counts] == [
+        "prediction-1"
+    ]
+    assert [item["observation_id"] for item in client.observations] == [
+        "observation-1"
+    ]

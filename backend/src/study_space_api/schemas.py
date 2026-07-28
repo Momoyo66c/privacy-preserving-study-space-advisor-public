@@ -486,6 +486,27 @@ class AuthenticatedRecommendationRequest(StrictModel):
         return values
 
 
+class StudyAdvisorRequest(StrictModel):
+    schema_version: Literal["1.0"]
+    study_goal: str = Field(min_length=3, max_length=500)
+    candidate_room_ids: list[StableId] = Field(min_length=1, max_length=50)
+
+    @field_validator("study_goal")
+    @classmethod
+    def normalized_goal(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if len(normalized) < 3:
+            raise ValueError("study_goal must contain at least 3 non-whitespace characters")
+        return normalized
+
+    @field_validator("candidate_room_ids")
+    @classmethod
+    def unique_advisor_candidates(cls, values: list[str]) -> list[str]:
+        if len(set(values)) != len(values):
+            raise ValueError("candidate_room_ids must be unique")
+        return values
+
+
 class RecommendationItem(StrictModel):
     room_id: StableId
     rank: int = Field(ge=1)
@@ -504,6 +525,22 @@ class RecommendationResponse(StrictModel):
     schema_version: Literal["1.0"] = SCHEMA_VERSION
     request_id: str
     generated_at: datetime
+    recommendations: list[RecommendationItem]
+    warnings: list[str]
+
+
+class StudyAdvisorResponse(StrictModel):
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    request_id: str
+    generated_at: datetime
+    interpreted_study_mode: StudyMode
+    interpreted_needs: list[
+        Literal["quiet", "discussion", "low_occupancy", "bright", "comfortable", "saved_preferences"]
+    ]
+    applied_preferences: RecommendationPreferences
+    focus_room_id: StableId | None
+    advisor_message: str
+    advice_source: Literal["stub", "template", "llm"]
     recommendations: list[RecommendationItem]
     warnings: list[str]
 

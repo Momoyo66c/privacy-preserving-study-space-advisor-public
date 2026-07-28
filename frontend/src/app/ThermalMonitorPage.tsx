@@ -3,6 +3,7 @@ import { isRealApi, loadLiveSensorSnapshot, loadRoomStatuses } from "../api/clie
 import type { RoomStatus, ThermalPreviewResponse } from "../types/contracts";
 
 type DisplayMode = "smooth" | "pixels";
+const MAX_CANVAS_EDGE = 4096;
 
 const COLOR_STOPS = [
   { at: 0, color: [5, 10, 25] },
@@ -234,10 +235,12 @@ function ThermalCanvas({
     const render = () => {
       const context = canvas.getContext("2d");
       if (!context) return;
-      const bounds = canvas.getBoundingClientRect();
+      const resizeTarget = canvas.parentElement ?? canvas;
+      const bounds = resizeTarget.getBoundingClientRect();
       const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.max(1, Math.round(bounds.width * pixelRatio));
-      canvas.height = Math.max(1, Math.round(bounds.height * pixelRatio));
+      const nextSize = boundedCanvasSize(bounds.width, bounds.height, pixelRatio);
+      if (canvas.width !== nextSize.width) canvas.width = nextSize.width;
+      if (canvas.height !== nextSize.height) canvas.height = nextSize.height;
 
       const source = document.createElement("canvas");
       source.width = sourceWidth;
@@ -281,7 +284,7 @@ function ThermalCanvas({
 
     render();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(render);
-    observer?.observe(canvas);
+    observer?.observe(canvas.parentElement ?? canvas);
     return () => observer?.disconnect();
   }, [preview, mode, showGrid]);
 
@@ -293,6 +296,16 @@ function ThermalCanvas({
       aria-label={`Live ${preview.width} by ${preview.height} normalized non-camera thermal distribution`}
     />
   );
+}
+
+export function boundedCanvasSize(cssWidth: number, cssHeight: number, pixelRatio: number) {
+  const safeWidth = Number.isFinite(cssWidth) && cssWidth > 0 ? cssWidth : 1;
+  const safeHeight = Number.isFinite(cssHeight) && cssHeight > 0 ? cssHeight : 1;
+  const safeRatio = Number.isFinite(pixelRatio) ? Math.min(Math.max(pixelRatio, 1), 2) : 1;
+  return {
+    width: Math.min(MAX_CANVAS_EDGE, Math.max(1, Math.round(safeWidth * safeRatio))),
+    height: Math.min(MAX_CANVAS_EDGE, Math.max(1, Math.round(safeHeight * safeRatio))),
+  };
 }
 
 function thermalStats(preview: ThermalPreviewResponse | null) {
