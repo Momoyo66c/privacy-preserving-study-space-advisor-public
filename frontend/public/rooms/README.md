@@ -17,3 +17,7 @@ https://www.iss.nus.edu.sg/about-us/contact-us
 ERC and SRC teaching rooms follow class timetables and confirmed UTown booking
 slots. Opening hours and access conditions may change; uNivUS and on-site
 notices remain authoritative.
+
+All runtime image paths resolve to files in this directory. The application
+does not depend on an external image host and uses `nus-erc-alr.jpg` as its
+decode/load fallback.

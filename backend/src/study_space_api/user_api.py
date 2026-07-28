@@ -33,8 +33,11 @@ from .schemas import (
     RoomSelectionHistoryItem,
     RoomSelectionHistoryResponse,
     RoomSelectionRequest,
+    StudyAdvisorRequest,
+    StudyAdvisorResponse,
     UserResponse,
 )
+from .recommendation.advisor import interpret_study_goal, sanitize_study_goal
 from .services.auth import (
     CSRF_COOKIE,
     SESSION_COOKIE,
@@ -343,6 +346,9 @@ async def my_recommendations(
         rooms=statuses,
         effective_preferences=as_recommendation_preferences(effective),
         preferred_temperature_c=effective.preferred_temperature_c,
+        # The normal dashboard is deterministic and fast. LLM generation is
+        # intentionally isolated to the dedicated study-advisor interaction.
+        explanations_enabled=False,
     )
     adapter = request.app.state.recommendation_adapter
     started = time.perf_counter()
@@ -391,6 +397,115 @@ async def my_recommendations(
     )
     session.commit()
     return result
+
+
+@router.post("/api/v1/me/study-advisor", response_model=StudyAdvisorResponse)
+async def my_study_advisor(
+    payload: StudyAdvisorRequest,
+    request: Request,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> StudyAdvisorResponse:
+    now = utcnow()
+    auth = authenticate_request(request, session, now, require_csrf=True)
+    try:
+        study_goal = sanitize_study_goal(payload.study_goal)
+    except ValueError as exc:
+        raise APIError(422, "PRIVACY_SENSITIVE_INPUT", str(exc)) from exc
+
+    profile, learned = _profile_and_learned(session, auth.user)
+    rooms_by_id = {room.id: room for room in RoomRepository(session).list_active()}
+    missing = [room_id for room_id in payload.candidate_room_ids if room_id not in rooms_by_id]
+    if missing:
+        raise APIError(
+            404,
+            "CANDIDATE_ROOM_NOT_FOUND",
+            "Candidate rooms must exist and be active",
+            {"room_ids": missing},
+        )
+
+    effective = effective_snapshot(profile, learned)
+    interpreted = interpret_study_goal(
+        study_goal,
+        effective.study_mode,
+        as_recommendation_preferences(effective),
+    )
+    ranking_request = AuthenticatedRecommendationRequest(
+        schema_version="1.0",
+        study_mode=interpreted.study_mode,
+        candidate_room_ids=payload.candidate_room_ids,
+    )
+    context = RecommendationContext(
+        request=ranking_request,
+        rooms=[
+            build_room_status(session, rooms_by_id[room_id], settings, now)
+            for room_id in payload.candidate_room_ids
+        ],
+        effective_preferences=interpreted.preferences,
+        preferred_temperature_c=effective.preferred_temperature_c,
+        study_goal=study_goal,
+        # The advisor presents one decisive room. Keeping the local-model request
+        # to that room also lets the 8 GB Windows demo meet the strict timeout.
+        explanation_limit=1,
+    )
+    adapter = request.app.state.recommendation_adapter
+    started = time.perf_counter()
+    fallback_reason: str | None = None
+    try:
+        adapter_result = await asyncio.wait_for(
+            adapter.rank(context),
+            timeout=settings.recommendation_adapter_timeout_seconds,
+        )
+    except Exception as exc:
+        fallback_reason = type(exc).__name__
+        adapter_result = await StubRecommendationAdapter().rank(context)
+        adapter_result.warnings.append("RECOMMENDATION_ADAPTER_FALLBACK")
+    fallback_reason = fallback_reason or adapter_result.fallback_reason
+    latency_ms = (time.perf_counter() - started) * 1000
+    request_id = request_id_for(request)
+    focus = adapter_result.recommendations[0] if adapter_result.recommendations else None
+    warnings = [*adapter_result.warnings, "STUDY_GOAL_NOT_STORED"]
+
+    score_breakdown = sanitize_score_breakdown(
+        adapter_result.score_breakdown,
+        payload.candidate_room_ids,
+    )
+    session.add(
+        models.RecommendationRecord(
+            request_id=request_id,
+            profile_id=profile.profile_id,
+            user_id=auth.user.id,
+            generated_at=now,
+            candidate_room_ids_json=payload.candidate_room_ids,
+            rankings_json=[
+                item.model_dump(mode="json")
+                for item in adapter_result.recommendations
+            ],
+            score_breakdown_json=score_breakdown or None,
+            explanation_source=focus.explanation_source if focus else "template",
+            adapter_name=adapter_result.adapter_name,
+            fallback_reason=fallback_reason,
+            latency_ms=latency_ms,
+            warnings_json=warnings,
+        )
+    )
+    session.commit()
+    return StudyAdvisorResponse(
+        request_id=request_id,
+        generated_at=now,
+        interpreted_study_mode=interpreted.study_mode,
+        interpreted_needs=interpreted.needs,
+        applied_preferences=interpreted.preferences,
+        focus_room_id=focus.room_id if focus else None,
+        advisor_message=(
+            focus.explanation
+            if focus
+            else "No room has enough current evidence for a recommendation."
+        ),
+        advice_source=focus.explanation_source if focus else "template",
+        recommendations=adapter_result.recommendations,
+        warnings=warnings,
+    )
 
 
 async def _direct_selection_breakdowns(

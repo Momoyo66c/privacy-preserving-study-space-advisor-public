@@ -17,7 +17,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    return Settings(database_url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}", cors_origins=["http://testserver"])
+    return Settings(
+        database_url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}",
+        cors_origins=["http://testserver"],
+        llm_enabled=False,
+    )
 
 
 @pytest.fixture

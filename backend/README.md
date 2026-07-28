@@ -112,6 +112,14 @@ the module 3 stub is still kept as the timeout/error fallback for
 The scoring formula is documented in `../frontend/README.md` and implemented in
 `src/study_space_api/recommendation/scoring.py`.
 
+`POST /api/v1/me/study-advisor` is the authenticated Module 4 study-goal
+boundary. It privacy-filters a transient goal, applies deterministic
+interpretation to the current request, calls the same formal adapter and lets
+Ollama explain only the already-ranked winning result. The goal is not
+persisted; limiting generation to that single result keeps the Windows demo
+responsive. The ordinary signed-in dashboard recommendation endpoint skips LLM
+generation entirely; local-model generation is isolated to this advisor route.
+
 For a real single-worker HTTP smoke test and P95 benchmark:
 
 ```powershell

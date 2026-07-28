@@ -176,3 +176,69 @@ python scripts/predict_people_count.py data/real_classroom_v1/session-20260723T1
 ```
 
 See `STATIC_HEAT_MOTION_GUARD.md` for details.
+
+## Live people count and room-state fusion
+
+The production demo entry point composes Module 1 acquisition with Module 2
+inference. It consumes the completed five-second window in memory, predicts a
+people count, fuses that count with relative sound, relative light, temperature
+and humidity, and publishes two privacy-safe payloads:
+
+- `people_count_prediction.v1` for the live numeric count;
+- `EdgeObservation` for occupancy, the four-state room label, suitability,
+  confidence, feature summaries and sensor health.
+
+```bash
+cd /home/pi/privacy-study-space-advisor
+PYTHONPATH=edge/hardware/src:edge/ml/src \
+  edge/hardware/.venv/bin/python edge/ml/scripts/stream_live.py \
+  --config /home/pi/.config/pssa/esp32-hub-windows-mic.local.yaml \
+  --backend-url http://WINDOWS_LAN_IP:8000 \
+  --people-count-artifact /home/pi/.config/pssa/models/people_count_rf_motion_v0_2
+```
+
+The fusion rule uses count plus sound to choose
+`empty_or_low_activity`, `quiet_study_recommended`,
+`discussion_allowed`, or `not_recommended_noisy_or_crowded`. Relative light
+and temperature/humidity change suitability. Missing thermal/count/sound
+evidence returns `unknown`; it is never interpreted as an empty room.
+
+Raw MLX90640 arrays are accepted only as an in-process argument to feature
+extraction. They are not included in the count payload, Observation, database,
+recommendation context, LLM input, or logs. The frontend must use the published
+count and must not estimate people by counting heat-map regions.
+
+The current real-data artifact is a demo baseline trained from 36 windows in
+four single-session scenarios. Its labels cover only zero to two people.
+Leave-one-session evaluation is materially weaker than the within-session
+holdout, including failure on the held-out empty session; do not claim
+production accuracy or use it for crowded-room capacity enforcement. Collect
+independent sessions and wider count labels before deployment.
+
+For the constrained zero-to-four-person demonstration, the live path also
+supports a one-shot local thermal calibration file. Calibrate an empty view,
+then one and two people for two windows each:
+
+```bash
+printf '%s\n' '{"request_id":"empty-1","people_count":0,"sample_windows":1}' \
+  > /tmp/pssa-thermal-count-calibration.json
+printf '%s\n' '{"request_id":"one-1","people_count":1,"sample_windows":2}' \
+  > /tmp/pssa-thermal-count-calibration.json
+printf '%s\n' '{"request_id":"two-1","people_count":2,"sample_windows":2}' \
+  > /tmp/pssa-thermal-count-calibration.json
+```
+
+The process consumes and removes each command. It persists only median
+foreground area and excess-heat summaries in
+`~/.config/pssa/thermal-count-calibration.json`. Counts three and four are
+extrapolated from the one/two-person anchors, capped at four, and require two
+consecutive windows before the displayed count changes. Keep the sensor fixed
+and avoid complete person-to-person occlusion.
+
+Once a one-person anchor exists, foreground evidence below 35% of the
+area/heat-weighted single-person reference is treated as zero. This rejects
+tiny warm-chair or sensor-noise remnants instead of forcing every non-zero
+region to be one person.
+
+See [MODULE2_HANDOFF.md](MODULE2_HANDOFF.md) for the Pi service and end-to-end
+handoff.

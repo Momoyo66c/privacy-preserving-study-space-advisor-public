@@ -188,6 +188,71 @@ def test_recommendation_adapter_and_record(client: TestClient, valid_observation
         assert "values" not in str(record.rankings_json)
 
 
+def test_latest_fused_observation_flows_into_formal_recommendation(
+    client: TestClient,
+    valid_observation: dict,
+) -> None:
+    request = {
+        "schema_version": "1.0",
+        "profile_id": "live-demo",
+        "study_mode": "quiet",
+        "preferences": {
+            "quiet_priority": 1.0,
+            "low_occupancy_priority": 1.0,
+            "brightness_priority": 0.5,
+            "comfort_priority": 0.5,
+            "distance_priority": 0.0,
+        },
+        "candidate_room_ids": ["room_a", "room_b", "room_c"],
+    }
+    assert (
+        client.post(
+            "/api/v1/edge/observations",
+            json=valid_observation,
+        ).status_code
+        == 200
+    )
+    first = client.post("/api/v1/recommendations", json=request)
+    assert first.status_code == 200
+    first_room_a = next(
+        item
+        for item in first.json()["recommendations"]
+        if item["room_id"] == "room_a"
+    )
+    assert first_room_a["current_state"] == "quiet_study_recommended"
+
+    noisy = deepcopy(valid_observation)
+    noisy["observation_id"] = f"{valid_observation['observation_id']}-noisy"
+    noisy["observed_at"] = (
+        datetime.now(timezone.utc) + timedelta(milliseconds=10)
+    ).isoformat()
+    noisy["room_state"] = "not_recommended_noisy_or_crowded"
+    noisy["occupancy_level"] = "high"
+    noisy["suitability_score"] = 20
+    noisy["confidence"] = 0.86
+    noisy["features"]["sound_rms_mean"] = 0.8
+    noisy["model"] = {
+        "name": "module2-live-sensor-fusion",
+        "version": "1.0.0",
+        "feature_schema_version": "live-fusion.v1",
+    }
+    assert client.post("/api/v1/edge/observations", json=noisy).status_code == 200
+
+    second = client.post("/api/v1/recommendations", json=request)
+    assert second.status_code == 200
+    second_room_a = next(
+        item
+        for item in second.json()["recommendations"]
+        if item["room_id"] == "room_a"
+    )
+    assert (
+        second_room_a["current_state"]
+        == "not_recommended_noisy_or_crowded"
+    )
+    assert second_room_a["score"] < first_room_a["score"]
+    assert second_room_a["explanation_source"] == "template"
+
+
 def test_optional_edge_bearer_token(tmp_path, valid_observation: dict) -> None:
     settings = Settings(database_url=f"sqlite:///{(tmp_path / 'auth.db').as_posix()}", edge_api_token="secret")
     app = create_app(settings)

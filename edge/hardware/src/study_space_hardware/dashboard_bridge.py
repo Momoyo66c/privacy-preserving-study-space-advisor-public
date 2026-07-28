@@ -8,9 +8,8 @@ import logging
 import math
 import os
 import threading
-import time
 from collections import deque
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import timezone
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -26,6 +25,7 @@ from .models import (
     SensorHealth,
     SensorHealthReport,
     SensorSample,
+    CollectedWindow,
 )
 from .orchestrator import SensorOrchestrator
 from .session_validation import validate_session
@@ -305,6 +305,12 @@ class DashboardClient:
             + "/sound-preview"
         )
         self.observation_url = base_url + "/api/v1/edge/observations"
+        self.people_count_url = (
+            base_url
+            + "/api/v1/edge/rooms/"
+            + quote(room_id, safe="")
+            + "/people-count"
+        )
         self.edge_token = edge_token
         self.timeout_s = timeout_s
 
@@ -316,6 +322,9 @@ class DashboardClient:
 
     def publish_observation(self, payload: Mapping[str, Any]) -> None:
         self._publish(self.observation_url, "POST", payload)
+
+    def publish_people_count(self, payload: Mapping[str, Any]) -> None:
+        self._publish(self.people_count_url, "PUT", payload)
 
     def _publish(self, url: str, method: str, payload: Mapping[str, Any]) -> None:
         body = json.dumps(
@@ -352,7 +361,8 @@ class LatestSnapshotPublisher:
         self.client = client
         self.observation_interval_s = observation_interval_s
         self._condition = threading.Condition()
-        self._latest: Mapping[str, Any] | None = None
+        self._latest_preview: Mapping[str, Any] | None = None
+        self._pending_summaries: deque[Mapping[str, Any]] = deque()
         self._stopping = False
         self._thread = threading.Thread(
             target=self._run,
@@ -361,9 +371,9 @@ class LatestSnapshotPublisher:
         )
         self.previews_published = 0
         self.sound_previews_published = 0
+        self.people_counts_published = 0
         self.observations_published = 0
         self.failed = 0
-        self._last_observation_at: float | None = None
         self._last_thermal_captured_at: str | None = None
         self._last_sound_captured_at: str | None = None
 
@@ -372,7 +382,10 @@ class LatestSnapshotPublisher:
 
     def submit(self, payload: Mapping[str, Any]) -> None:
         with self._condition:
-            self._latest = payload
+            if payload.get("observation") is not None or payload.get("people_count") is not None:
+                self._pending_summaries.append(payload)
+            else:
+                self._latest_preview = payload
             self._condition.notify()
 
     def close(self) -> None:
@@ -385,10 +398,15 @@ class LatestSnapshotPublisher:
         while True:
             with self._condition:
                 self._condition.wait_for(
-                    lambda: self._latest is not None or self._stopping
+                    lambda: bool(self._pending_summaries)
+                    or self._latest_preview is not None
+                    or self._stopping
                 )
-                payload = self._latest
-                self._latest = None
+                if self._pending_summaries:
+                    payload = self._pending_summaries.popleft()
+                else:
+                    payload = self._latest_preview
+                    self._latest_preview = None
                 stopping = self._stopping
             if payload is not None:
                 try:
@@ -408,21 +426,25 @@ class LatestSnapshotPublisher:
                         self.client.publish_sound_preview(sound_preview)
                         self.sound_previews_published += 1
                         self._last_sound_captured_at = sound_preview["captured_at"]
-                    now = time.monotonic()
-                    if (
-                        self._last_observation_at is None
-                        or now - self._last_observation_at >= self.observation_interval_s
-                    ):
-                        self.client.publish_observation(payload["observation"])
+                    people_count = payload.get("people_count")
+                    if people_count is not None:
+                        self.client.publish_people_count(people_count)
+                        self.people_counts_published += 1
+                    observation = payload.get("observation")
+                    if observation is not None:
+                        self.client.publish_observation(observation)
                         self.observations_published += 1
-                        self._last_observation_at = now
                 except Exception as exc:
                     self.failed += 1
                     LOGGER.warning(
                         "dashboard_publish_failed error_type=%s",
                         type(exc).__name__,
                     )
-            if stopping and self._latest is None:
+            if (
+                stopping
+                and not self._pending_summaries
+                and self._latest_preview is None
+            ):
                 return
 
 
@@ -433,17 +455,31 @@ class SensorDashboardBridge:
         orchestrator: SensorOrchestrator,
         builder: LiveSnapshotBuilder,
         publisher: LatestSnapshotPublisher,
+        window_processor: Callable[
+            [CollectedWindow, Mapping[str, Any]], Mapping[str, Any]
+        ]
+        | None = None,
     ) -> None:
         if "thermal" not in orchestrator.drivers:
             raise ValueError("thermal sensor must be enabled for dashboard streaming")
         self.orchestrator = orchestrator
         self.builder = builder
         self.publisher = publisher
+        self.window_processor = window_processor
 
     def _observe_sample(self, sample: SensorSample) -> None:
         self.builder.accept(sample)
         if sample.sensor in {"thermal", "sound"}:
-            self.publisher.submit(self.builder.build(self.orchestrator.health()))
+            bundle = self.builder.build(self.orchestrator.health())
+            # High-rate samples update only the expiring previews. A completed
+            # sensor window owns Observation and people-count publication so an
+            # interim fallback cannot overwrite Module 2 inference.
+            self.publisher.submit(
+                {
+                    "thermal_preview": bundle.get("thermal_preview"),
+                    "sound_preview": bundle.get("sound_preview"),
+                }
+            )
 
     def run(
         self,
@@ -460,9 +496,17 @@ class SensorDashboardBridge:
                 window = self.orchestrator.run_window(
                     on_sample=self._observe_sample,
                 )
-                self.publisher.submit(
-                    self.builder.build(self.orchestrator.health())
+                bundle: Mapping[str, Any] = self.builder.build(
+                    self.orchestrator.health()
                 )
+                if self.window_processor is not None:
+                    bundle = self.window_processor(window, bundle)
+                observation = bundle.get("observation")
+                if isinstance(observation, Mapping):
+                    room_state = observation.get("room_state")
+                    if isinstance(room_state, str):
+                        self.orchestrator.apply_room_state(room_state)
+                self.publisher.submit(bundle)
                 if writer is not None:
                     writer.append(window)
                 completed += 1

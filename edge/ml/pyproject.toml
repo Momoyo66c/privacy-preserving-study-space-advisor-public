@@ -14,7 +14,8 @@ dependencies = [
   "scikit-learn>=1.3",
   "joblib>=1.3",
   "scipy>=1.10",
-  "matplotlib>=3.7"
+  "matplotlib>=3.7",
+  "tabulate>=0.9"
 ]
 
 [project.optional-dependencies]
@@ -26,6 +27,7 @@ study-space-ml-count-features = "study_space_ml.scripts.extract_features:main"
 study-space-ml-count-train = "study_space_ml.scripts.train_people_count:main"
 study-space-ml-count-predict = "study_space_ml.scripts.predict_people_count:main"
 study-space-ml-count-leave-one-session = "study_space_ml.scripts.leave_one_session_eval:main"
+study-space-ml-live = "study_space_ml.scripts.stream_live:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

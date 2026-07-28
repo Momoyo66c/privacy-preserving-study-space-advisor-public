@@ -57,11 +57,24 @@ class RuleBasedRecommendationAdapter:
             )
 
         try:
-            explanations = await self.provider.explain(
-                items,
-                {room.room_id: room for room in context.rooms},
-                context.request.study_mode,
+            explanation_items = (
+                items[: context.explanation_limit]
+                if context.explanation_limit is not None
+                else items
             )
+            if context.study_goal is None:
+                explanations = await self.provider.explain(
+                    explanation_items,
+                    {room.room_id: room for room in context.rooms},
+                    context.request.study_mode,
+                )
+            else:
+                explanations = await self.provider.explain(
+                    explanation_items,
+                    {room.room_id: room for room in context.rooms},
+                    context.request.study_mode,
+                    study_goal=context.study_goal,
+                )
             items = [
                 item.model_copy(
                     update={
@@ -69,6 +82,8 @@ class RuleBasedRecommendationAdapter:
                         "explanation_source": "llm",
                     }
                 )
+                if item.room_id in explanations
+                else item
                 for item in items
             ]
         except ExplanationProviderError as exc:

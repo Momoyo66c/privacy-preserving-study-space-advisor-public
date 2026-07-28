@@ -32,6 +32,8 @@ export interface LocalizedRoomCatalogEntry {
   sourceUrl: string;
 }
 
+export const ROOM_IMAGE_FALLBACK = "/rooms/nus-erc-alr.jpg";
+
 export const roomCatalog: Record<string, RoomCatalogEntry> = {
   room_a: {
     displayName: "ERC The Study",
@@ -42,7 +44,7 @@ export const roomCatalog: Record<string, RoomCatalogEntry> = {
       zh: "NUS 师生 · 部分座位可通过 uNivUS 预约",
       en: "NUS students and staff · selected seats bookable in uNivUS",
     },
-    image: "/rooms/nus-college-classroom-4.jpg",
+    image: "/rooms/nus-erc-alr.jpg",
     capacity: { zh: "中型学习区", en: "Medium-sized study cluster" },
     amenities: [
       { zh: "电源插座", en: "Power outlets" },
@@ -59,7 +61,7 @@ export const roomCatalog: Record<string, RoomCatalogEntry> = {
     address: "25 Heng Mui Keng Terrace, Singapore 119615",
     openingHours: { zh: "周一至周五 · 09:00–17:00", en: "Mon–Fri · 09:00–17:00" },
     accessNote: { zh: "按教学课表开放", en: "Open according to the teaching timetable" },
-    image: "/rooms/nus-college-classroom-1.jpg",
+    image: "/rooms/nus-erc-sr8.jpg",
     capacity: { zh: "灵活教室", en: "Flexible classroom" },
     amenities: [
       { zh: "小组桌椅", en: "Group tables" },
@@ -76,7 +78,7 @@ export const roomCatalog: Record<string, RoomCatalogEntry> = {
     address: "25 Heng Mui Keng Terrace, Singapore 119615",
     openingHours: { zh: "周一至周五 · 09:00–17:00", en: "Mon–Fri · 09:00–17:00" },
     accessNote: { zh: "仅限排定课程与获授权活动", en: "Scheduled classes and authorised events" },
-    image: "/rooms/nus-college-classroom-2.jpg",
+    image: "/rooms/nus-src-glr.jpg",
     capacity: { zh: "大型阶梯教室", en: "Large lecture theatre" },
     amenities: [
       { zh: "阶梯座位", en: "Tiered seating" },
@@ -93,7 +95,7 @@ export const roomCatalog: Record<string, RoomCatalogEntry> = {
     address: "25 Heng Mui Keng Terrace, Singapore 119615",
     openingHours: { zh: "周一至周五 · 09:00–17:00", en: "Mon–Fri · 09:00–17:00" },
     accessNote: { zh: "仅限排定课程与获授权活动", en: "Scheduled classes and authorised events" },
-    image: "/rooms/nus-college-classroom-3.jpg",
+    image: "/rooms/nus-erc-sr1.jpg",
     capacity: { zh: "大型研讨空间", en: "Large seminar space" },
     amenities: [
       { zh: "投影系统", en: "Projection system" },
@@ -215,7 +217,7 @@ export function catalogFor(room: RoomStatus, language: Language): LocalizedRoomC
       address: room.location ?? "National University of Singapore",
       openingHours: { zh: "请查看最新校园课表", en: "Check the latest campus timetable" },
       accessNote: { zh: "适用 NUS 场地访问规则", en: "NUS access rules apply" },
-      image: "/rooms/nus-college-classroom-1.jpg",
+      image: ROOM_IMAGE_FALLBACK,
       capacity: { zh: "校园学习空间", en: "Campus learning space" },
       amenities: [
         { zh: "校园 Wi-Fi", en: "Campus Wi-Fi" },

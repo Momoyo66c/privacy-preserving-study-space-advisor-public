@@ -14,6 +14,7 @@ __pycache__/
 .coverage
 htmlcov/
 .venv/
+.venv-windows/
 venv/
 dist/
 build/
@@ -29,6 +30,7 @@ frontend/playwright-report/
 frontend/*.tsbuildinfo
 
 # IDE / OS
+.codex-tmp/
 .idea/
 .vscode/
 .DS_Store
@@ -48,6 +50,7 @@ models/*.pkl
 *.db
 *.sqlite
 *.sqlite3
+.runtime/
 logs/
 tmp/
 .cache/

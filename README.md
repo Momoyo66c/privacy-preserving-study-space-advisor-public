@@ -87,6 +87,29 @@ npm run gate-a:e2e
 
 浏览器测试会启动临时 SQLite 后端和 Vite，不会写入项目数据库，也不需要真实传感器、边缘令牌或 LLM Key。
 
+## Windows 一键启动现场演示
+
+完成一次依赖安装和本机配置后，双击根目录的 `start-demo.cmd`。启动器会：
+
+1. 检查并按需启动 E 盘模型目录对应的 Ollama；
+2. 运行 Alembic migration 并按需启动 FastAPI；
+3. 检查树莓派采集服务，只在未运行时启动，不会无故重启并丢失热背景；
+4. 启动或复用 `PSSA-Windows-Remote-Sound` 麦克风摘要任务；
+5. 按真实 API 模式启动 Vite，并打开 Dashboard。
+
+已运行的组件不会重复启动。后台输出保存在 `.runtime/demo/`，不进入 Git。
+只检查而不启动任何组件时运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_demo.ps1 -CheckOnly -NoBrowser
+```
+
+默认树莓派地址为 `raspberrypi.local`。地址变化时可从 PowerShell 指定：
+
+```powershell
+.\scripts\start_demo.ps1 -PiHost 192.0.2.50
+```
+
 ## 分模块运行
 
 Module 1 模拟器：

@@ -8,6 +8,9 @@
 - `me_preference_update.schema.json`: updates manual preferences and the learning switch.
 - `room_selection_request.schema.json`, `room_selection_accepted.schema.json`, and `room_selection_history.schema.json`: record and return explicit choices with UUID idempotency keys. Client timestamps and client-supplied user IDs are forbidden.
 - `user_response.schema.json` and `delete_result.schema.json`: current local-user summary and destructive-action result.
+- `study_advisor_request.schema.json` and `study_advisor_response.schema.json`:
+  one-request study-goal interpretation, deterministic ranking, and optional
+  local-LLM explanation. The goal is transient and is never an audit field.
 
 存放跨模块 JSON Schema、枚举和版本说明。修改契约时同时更新：
 

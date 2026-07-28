@@ -13,6 +13,8 @@ import type {
   RoomSelectionHistoryResponse,
   RoomSelectionRequest,
   RoomStatus,
+  StudyAdvisorRequest,
+  StudyAdvisorResponse,
   UserResponse,
   WeatherInfo,
 } from "../types/contracts";
@@ -24,6 +26,7 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL)
 const CSRF_STORAGE_KEY = "pssa-csrf-token";
 const CSRF_COOKIE = "pssa_csrf";
 const MOCK_SESSION_KEY = "pssa-mock-session";
+const MOCK_ADMIN_SESSION_KEY = "pssa-local-admin-session";
 const MOCK_ACCOUNTS_KEY = "pssa-mock-accounts";
 const MOCK_PREFERENCES_KEY = "pssa-mock-preferences";
 const WEATHER_CACHE_KEY = "pssa-weather-cache-v1";
@@ -72,6 +75,10 @@ const defaultPreferenceResponse = (request = defaultRequest): MePreferenceRespon
 });
 
 export async function restoreSession(): Promise<UserResponse | null> {
+  const localAdminId = window.localStorage.getItem(MOCK_ADMIN_SESSION_KEY);
+  if (localAdminId) {
+    return mockAccounts().find((account) => account.user_id === localAdminId && account.role === "admin") ?? null;
+  }
   if (!isRealApi) {
     const userId = window.localStorage.getItem(MOCK_SESSION_KEY);
     return mockAccounts().find((account) => account.user_id === userId) ?? null;
@@ -114,6 +121,19 @@ export async function register(credentials: Omit<AuthCredentials, "schema_versio
   return result;
 }
 
+export async function loginAdministratorDemo(
+  credentials: Omit<AuthCredentials, "schema_version">,
+): Promise<AuthSessionResponse> {
+  const account = mockAccounts().find(
+    (item) => item.role === "admin" && item.username === credentials.username.trim().toLowerCase(),
+  );
+  if (!account || account.passwordHash !== (await mockPasswordHash(credentials.password))) {
+    throw new Error("用户名或密码不正确。");
+  }
+  window.localStorage.setItem(MOCK_ADMIN_SESSION_KEY, account.user_id);
+  return mockSession(account);
+}
+
 export async function login(credentials: Omit<AuthCredentials, "schema_version">): Promise<AuthSessionResponse> {
   if (!isRealApi) {
     const username = credentials.username.trim().toLowerCase();
@@ -135,6 +155,9 @@ export async function login(credentials: Omit<AuthCredentials, "schema_version">
 }
 
 export async function logout() {
+  const localAdmin = window.localStorage.getItem(MOCK_ADMIN_SESSION_KEY);
+  window.localStorage.removeItem(MOCK_ADMIN_SESSION_KEY);
+  if (localAdmin) return;
   if (!isRealApi) {
     window.localStorage.removeItem(MOCK_SESSION_KEY);
     return;
@@ -144,6 +167,10 @@ export async function logout() {
 }
 
 export async function deleteMe() {
+  if (window.localStorage.getItem(MOCK_ADMIN_SESSION_KEY)) {
+    window.localStorage.removeItem(MOCK_ADMIN_SESSION_KEY);
+    return null;
+  }
   if (!isRealApi) {
     window.localStorage.removeItem(MOCK_SESSION_KEY);
     return null;
@@ -154,6 +181,7 @@ export async function deleteMe() {
 }
 
 export async function loadMyPreferences(user: UserResponse): Promise<MePreferenceResponse> {
+  if (user.role === "admin") return defaultPreferenceResponse();
   if (!isRealApi) return mockPreference(user.user_id);
   return getJson<MePreferenceResponse>("/api/v1/me/preferences");
 }
@@ -225,6 +253,36 @@ export async function deleteRoomSelections() {
 }
 
 export async function loadDashboardData(user: UserResponse, request: RecommendationRequest): Promise<DashboardData> {
+  if (user.role === "admin" && isRealApi) {
+    const roomsResponse = await getJson<{ rooms: RoomStatus[] }>("/api/v1/rooms/status");
+    const candidateRoomIds = roomsResponse.rooms.map((room) => room.room_id);
+    const adminRequest = {
+      ...request,
+      profile_id: "local-admin-demo",
+      candidate_room_ids: candidateRoomIds,
+    };
+    let recommendations: DashboardData["recommendations"];
+    try {
+      recommendations = await postJson<RecommendationRequest, DashboardData["recommendations"]>(
+        "/api/v1/recommendations",
+        adminRequest,
+        { csrf: false },
+      );
+    } catch {
+      recommendations = buildMockRecommendation(adminRequest, roomsResponse.rooms);
+    }
+    return {
+      rooms: roomsResponse.rooms,
+      recommendations,
+      histories: {},
+      thermalPreviews: {},
+      backendStatus: "ok",
+      lastUpdated: new Date().toISOString(),
+      user,
+      preferences: defaultPreferenceResponse(adminRequest),
+      authenticated: true,
+    };
+  }
   if (!isRealApi) {
     await delay(120);
     const preferences = mockPreference(user.user_id);
@@ -262,6 +320,48 @@ export async function loadDashboardData(user: UserResponse, request: Recommendat
     selectionHistory,
     authenticated: true,
   };
+}
+
+export async function requestStudyAdvice(
+  user: UserResponse,
+  studyGoal: string,
+  candidateRoomIds: string[],
+): Promise<StudyAdvisorResponse> {
+  if (!isRealApi) {
+    await delay(220);
+    const preferences = mockPreference(user.user_id);
+    const interpreted = interpretMockStudyGoal(studyGoal, preferences.effective.study_mode);
+    const request = requestFromPreferences(
+      preferences,
+      candidateRoomIds,
+      user.user_id,
+    );
+    request.study_mode = interpreted.mode;
+    const recommendations = buildMockRecommendation(request);
+    const focus = recommendations.recommendations[0] ?? null;
+    return {
+      schema_version: "1.0",
+      request_id: "mock-advisor-request",
+      generated_at: new Date().toISOString(),
+      interpreted_study_mode: interpreted.mode,
+      interpreted_needs: interpreted.needs,
+      applied_preferences: request.preferences,
+      focus_room_id: focus?.room_id ?? null,
+      advisor_message: focus?.explanation ?? "No room has enough current evidence for a recommendation.",
+      advice_source: "template",
+      recommendations: recommendations.recommendations,
+      warnings: ["LLM_DISABLED", "STUDY_GOAL_NOT_STORED"],
+    };
+  }
+  const body: StudyAdvisorRequest = {
+    schema_version: "1.0",
+    study_goal: studyGoal,
+    candidate_room_ids: candidateRoomIds,
+  };
+  return postJson<StudyAdvisorRequest, StudyAdvisorResponse>(
+    "/api/v1/me/study-advisor",
+    body,
+  );
 }
 
 export async function loadRoomStatuses(): Promise<RoomStatus[]> {
@@ -353,6 +453,29 @@ function requestFromPreferences(preferences: MePreferenceResponse, candidateRoom
       distance_priority: preferences.effective.distance_priority,
     },
     candidate_room_ids: candidateRoomIds,
+  };
+}
+
+function interpretMockStudyGoal(
+  studyGoal: string,
+  savedMode: RecommendationRequest["study_mode"],
+): {
+  mode: RecommendationRequest["study_mode"];
+  needs: StudyAdvisorResponse["interpreted_needs"];
+} {
+  const normalized = studyGoal.toLowerCase();
+  const discussion = ["discuss", "discussion", "group", "meeting", "presentation", "讨论", "小组", "汇报", "合作"].some((term) => normalized.includes(term));
+  const quiet = ["quiet", "focus", "exam", "revision", "read", "coding", "安静", "专注", "复习", "考试", "阅读", "编程"].some((term) => normalized.includes(term));
+  const needs: StudyAdvisorResponse["interpreted_needs"] = [];
+  if (quiet) needs.push("quiet");
+  if (discussion) needs.push("discussion");
+  if (["empty", "seat", "less crowded", "人少", "空位", "不拥挤"].some((term) => normalized.includes(term))) needs.push("low_occupancy");
+  if (["bright", "lighting", "明亮", "光线"].some((term) => normalized.includes(term))) needs.push("bright");
+  if (["comfortable", "temperature", "humidity", "舒适", "温度", "湿度"].some((term) => normalized.includes(term))) needs.push("comfortable");
+  if (!needs.length) needs.push("saved_preferences");
+  return {
+    mode: discussion && !quiet ? "discussion" : quiet && !discussion ? "quiet" : savedMode,
+    needs,
   };
 }
 
@@ -449,7 +572,7 @@ function mockAccounts(): MockAccount[] {
       username: "student",
       role: "student",
       created_at: "2026-07-01T00:00:00Z",
-      passwordHash: "demo:study1234",
+      passwordHash: "demo:study12345",
     },
     {
       schema_version: "1.0",
@@ -457,7 +580,7 @@ function mockAccounts(): MockAccount[] {
       username: "admin",
       role: "admin",
       created_at: "2026-07-01T00:00:00Z",
-      passwordHash: "demo:admin1234",
+      passwordHash: "demo:admin12345",
     },
   ];
   try {
@@ -494,7 +617,7 @@ function saveMockPreference(userId: string, preference: MePreferenceResponse) {
 }
 
 async function mockPasswordHash(password: string) {
-  if (password === "study1234" || password === "admin1234") return `demo:${password}`;
+  if (password === "study12345" || password === "admin12345") return `demo:${password}`;
   if (window.crypto?.subtle) {
     const bytes = new TextEncoder().encode(`study-space-mock:${password}`);
     const digest = await window.crypto.subtle.digest("SHA-256", bytes);

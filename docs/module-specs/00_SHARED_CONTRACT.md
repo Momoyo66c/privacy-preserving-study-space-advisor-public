@@ -345,3 +345,16 @@ JSON Schema 放在 `shared/contracts/`，CI 中必须校验示例负载。
 - 破坏兼容性的变更提升 `schema_version`。
 - 每个模块应维护 `README`、运行命令、环境变量示例和测试命令。
 - 新增依赖前确认 Raspberry Pi 5 可安装、许可证可接受且没有不必要的云端数据上传。
+
+## 13. 登录用户的临时学习目标分析
+
+`POST /api/v1/me/study-advisor` 接收 `study_advisor_request.schema.json`，
+并返回 `study_advisor_response.schema.json`。请求只允许包含
+`schema_version`、最多 500 字的 `study_goal` 和候选教室 ID；用户身份及
+长期偏好必须从当前会话读取。
+
+学习目标只用于本次请求，不写入推荐审计、选择历史或偏好档案。服务端在
+调用本地 LLM 前拒绝邮箱、学号、长电话号码、凭据和密钥等敏感内容。
+目标中的学习模式和优先需求由确定性规则解释，再使用模块 4 正式评分器
+排序。LLM 只解释已经确定的候选和房间事实，不得改变排名、分数、状态或
+预测；不可用时返回模板解释。

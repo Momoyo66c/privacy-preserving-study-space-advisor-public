@@ -9,7 +9,12 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from .constants import FEATURE_NAMES, MODEL_NAME, MODEL_VERSION, PEOPLE_COUNT_FEATURE_SCHEMA_VERSION
+from .constants import (
+    FEATURE_NAMES,
+    PEOPLE_COUNT_FEATURE_SCHEMA_VERSION,
+    PEOPLE_COUNT_MODEL_NAME,
+    PEOPLE_COUNT_MODEL_VERSION,
+)
 from .features import extract_window_features
 from .io import load_relative_features, read_jsonl, write_jsonl
 
@@ -149,7 +154,10 @@ class PeopleCountPredictor:
         meta_path = self.artifact_dir / "metadata.json"
         self.metadata = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
         self.feature_names = self.metadata.get("feature_names", FEATURE_NAMES)
-        self.model_version = self.metadata.get("model_version", MODEL_VERSION)
+        self.model_version = self.metadata.get(
+            "model_version",
+            PEOPLE_COUNT_MODEL_VERSION,
+        )
 
     def _confidence(self, X: pd.DataFrame, features: dict[str, Any]) -> float:
         try:
@@ -182,10 +190,16 @@ class PeopleCountPredictor:
         *,
         session_dir: str | Path | None = None,
         relative: dict[str, Any] | None = None,
+        thermal_frames: Any | None = None,
         include_features: bool = True,
         apply_single_window_guard: bool = True,
     ) -> dict[str, Any]:
-        features = extract_window_features(window, session_dir=session_dir, relative=relative)
+        features = extract_window_features(
+            window,
+            session_dir=session_dir,
+            relative=relative,
+            thermal_frames=thermal_frames,
+        )
         X = pd.DataFrame([{name: features.get(name, 0.0) for name in self.feature_names}])
         pred_float = float(self.model.predict(X)[0])
         pred_rounded = int(max(0, round(pred_float)))
@@ -213,7 +227,10 @@ class PeopleCountPredictor:
             "occupancy_level": occupancy_level_from_count(pred_rounded),
             "confidence": confidence,
             "model": {
-                "name": self.metadata.get("model_name", MODEL_NAME),
+                "name": self.metadata.get(
+                    "model_name",
+                    PEOPLE_COUNT_MODEL_NAME,
+                ),
                 "version": self.model_version,
                 "feature_schema_version": self.metadata.get("feature_schema_version", PEOPLE_COUNT_FEATURE_SCHEMA_VERSION),
             },

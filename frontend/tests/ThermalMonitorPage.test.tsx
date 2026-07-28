@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ThermalMonitorPage } from "../src/app/ThermalMonitorPage";
+import { boundedCanvasSize, ThermalMonitorPage } from "../src/app/ThermalMonitorPage";
 
 describe("ThermalMonitorPage", () => {
   beforeEach(() => {
@@ -28,5 +28,16 @@ describe("ThermalMonitorPage", () => {
     await user.click(pixelButton);
     expect(pixelButton).toHaveClass("active");
     expect(screen.getByRole("button", { name: "Smooth" })).not.toHaveClass("active");
+  });
+
+  it("bounds the backing canvas even when layout dimensions regress", () => {
+    expect(boundedCanvasSize(16_777_217, 16_777_217, 2)).toEqual({
+      width: 4096,
+      height: 4096,
+    });
+    expect(boundedCanvasSize(Number.NaN, -10, Number.POSITIVE_INFINITY)).toEqual({
+      width: 1,
+      height: 1,
+    });
   });
 });

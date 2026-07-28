@@ -1,6 +1,6 @@
 # 模块 1 交接说明
 
-更新时间：2026-07-23
+更新时间：2026-07-27
 分支：`module1/relative-light-calibration`
 
 ## 交接结论
@@ -107,7 +107,29 @@ LD2450 已从最终实物范围移除。为保持 `schema_version=1.0` 和已有
   相对光照和温湿度继续运行。该路径为相对测量，始终
   `calibrated_db=false`。
 - Windows 麦克风授权、设备选择、动态响应和端到端短时 smoke 已完成。长期采集
-  时仍需在 Windows 保持代理进程运行；代理不运行时系统自动回到三传感器模式。
+  使用 `remote_sound_supervisor` 同时管理 SSH 隧道和代理；网络切换、隧道退出
+  或连续三次发送失败后自动重建。代理不运行时系统仍自动回到三传感器模式。
+
+### 2026-07-27 Windows 自动恢复验收
+
+- Windows 专用环境位于项目非 C 盘目录 `edge/hardware/.venv-windows`，安装
+  `remote-sound` 与测试依赖；目录已被 Git 忽略。
+- 当前用户任务 `PSSA-Windows-Remote-Sound` 已注册为登录触发、有限权限、
+  电池供电可运行、禁止重复实例，当前状态为 `Running`。任务使用
+  `raspberrypi.local` 与 IPv4，不依赖当前 DHCP 地址。
+- supervisor 使用 `ServerAliveInterval=5`、`ServerAliveCountMax=2`、
+  `ExitOnForwardFailure=yes` 和 1–30 秒退避；token 只通过用户环境传递。
+- 真实链路为 Windows `198.51.100.74` → SSH → Pi `198.51.100.76` 回环
+  `127.0.0.1:8766`。Pi 的 `pssa-dashboard-bridge.service` 为用户级 systemd
+  服务，状态 `active`。
+- 初始端到端诊断 3/3 摘要发送成功。随后强制终止 SSH 子进程，supervisor 在
+  约 2 秒内从 attempt 1 恢复到 attempt 2，本地 18766 端口重新监听，摘要继续
+  发送。
+- 恢复后后端 `room_a` 为 `sound=ok`、`thermal=ok`、`environment=ok`、
+  `is_stale=false`；`radar=not_configured` 符合最终硬件基线。故障演练没有
+  停止或修改 MLX90640、HW-486、DHT11。
+- 2026-07-27 模块 1 回归共 199 项通过；`compileall`、PowerShell 脚本解析和
+  `git diff --check` 均通过。全程 `raw_audio_persisted=false`。
 
 ### 2026-07-23 Windows 麦克风 smoke
 
@@ -185,10 +207,17 @@ export PSSA_REMOTE_SOUND_TOKEN='<random-secret>'
 python scripts/probe_sensors.py \
   --config config/esp32-hub-windows-mic.example.yaml
 
-# Windows PowerShell（先建立隧道）
+# Windows PowerShell：自动恢复链路与登录自启动
+py -3.11 -m venv .venv-windows
+.\.venv-windows\Scripts\python.exe -m pip install -e ".[remote-sound]"
+.\.venv-windows\Scripts\python.exe -m study_space_hardware.remote_sound_supervisor `
+  --ssh-host raspberrypi.local
+powershell -ExecutionPolicy Bypass -File scripts\install_windows_remote_sound_task.ps1 `
+  -PiHost raspberrypi.local
+
+# 仅在诊断时使用的两窗口手动模式
 ssh -N -L 18766:127.0.0.1:8766 pi@PI_IP
-python scripts/stream_remote_sound.py --list-devices
-python scripts/stream_remote_sound.py
+.\.venv-windows\Scripts\python.exe scripts\stream_remote_sound.py --list-devices
 
 # 相对标定分阶段命令；每次独占串口前必须停止展示桥，完成后立即恢复
 python scripts/calibrate_light.py capture-dark \
@@ -278,3 +307,17 @@ study-space-verify-session data/sessions/SESSION_ID
 - 未复制检索到的 GPL/AGPL 项目源码。项目根许可证仍需维护者确认。
 
 Pi 地址发现、Mac 后端恢复、无 Git 部署副本同步、systemd 安装、实时页面验收和会话打包的完整顺序见 [`../../docs/RASPBERRY_PI_CODEX_HANDOFF.md`](../../docs/RASPBERRY_PI_CODEX_HANDOFF.md)。
+
+## 2026-07-27 模块 2 实时组合边界
+
+- `SensorDashboardBridge` 现在允许注入 `window_processor`。模块 1 仍拥有驱动、
+  窗口和健康状态；模块 2 只在一个完整窗口结束后接收内存对象。
+- 高频采样期间只合并最新热图/声音预览；完成窗口的 Observation 与人数预测
+  进入独立 FIFO，不能被下一帧覆盖。
+- 未注入处理器时继续输出 `unknown` Observation，适合硬件 smoke；正式展示
+  必须使用 `edge/ml/scripts/stream_live.py`，不能把热区数量当作人数。
+- 发布端点为 Observation、thermal preview、sound preview 和
+  `people-count`。任何发布负载都不含原始热阵列、声音波形或跨窗口身份。
+- Pi 的 systemd drop-in 位于
+  `edge/ml/deploy/pssa-module2-live.conf`，模型权重保存在 Pi 的
+  `~/.config/pssa/models/`，不进入 Git。

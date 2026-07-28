@@ -2,6 +2,9 @@
 
 ## What changed
 
+- Current-state labels display `Closed` whenever
+  `light_relative_mean < 0.2`. This is a frontend presentation override only;
+  it does not add a shared state enum or change recommendation scoring.
 - Added a React/Vite dashboard in `frontend/` with mock and real API modes.
 - Added a real-backend Gate A browser test covering Module 1 simulation through
   Module 2, Module 3 APIs, and the Dashboard.
@@ -14,6 +17,10 @@
   freeze/full-screen controls, room selection and relative-intensity frame
   statistics. Interpolation is explicitly labelled as a display treatment, not
   additional sensor resolution.
+- Restored the monitor's standalone responsive layout after the interface
+  merge and hardened the renderer against canvas resize feedback. It observes
+  the containing stage, caps each backing-store edge at 4096 pixels and has a
+  regression boundary test in `ThermalMonitorPage.test.tsx`.
 - Added `RuleBasedRecommendationAdapter` under the backend adapter boundary.
   It returns bounded score breakdowns for preference learning and uses stable
   fresh/stale/unknown buckets and deterministic tie-breaking.
@@ -23,10 +30,23 @@
   ranking-invariance tests, plus a repeatable real Ollama benchmark.
 - Added a bilingual nine-room NUS directory, resilient NEA weather display and
   an image-led glass-style student interface.
+- Restored the local administrator demonstration in real API mode without
+  claiming a production backend role. It reads current room status and keeps
+  the `admin / admin12345` credential entirely in the browser demo boundary.
+- Replaced four missing classroom-image paths with repository-local NUS room
+  assets and added a local decode/load fallback.
+- Added an AI Advisor top-level student page and
+  `POST /api/v1/me/study-advisor`. A transient study goal can alter only the
+  current deterministic interpretation of mode and priorities; Ollama explains
+  the grounded result and never changes ranking. Ordinary dashboard
+  recommendations remain deterministic and do not invoke the LLM.
 - Restored the authenticated preference-learning flow: explicit selections are
   confirmed by the backend first, failed writes retain their idempotency ID for
   retry, and the Account page exposes learning, reset, history deletion and
   account deletion controls.
+- Added `vite.public.config.ts` for temporary HTTPS demonstrations. It serves
+  real API mode through one same-origin proxy on port 5174 and blocks all public
+  `/api/v1/edge/*` requests before they can reach the backend.
 
 ## URLs and commands
 
@@ -70,6 +90,15 @@ Dashboard URL: `http://127.0.0.1:5173`
 
 Thermal monitor URL:
 `http://127.0.0.1:5173/thermal?room=room_a&mode=api`
+
+Temporary public-demo ingress (the generated tunnel URL is runtime state):
+
+```powershell
+cd frontend
+npx vite --config vite.public.config.ts
+```
+
+Only port 5174 should be tunneled; do not expose backend port 8000 directly.
 
 ## Configuration
 
@@ -117,6 +146,9 @@ any of these values.
 - Real API recommendations use the signed-in account's server-owned effective
   preference. Mock mode retains a local demo profile; neither mode collects
   names, student IDs, email addresses, or precise personal locations.
+- AI Advisor rejects identifiers, contact details, credentials and secrets
+  before provider use. The goal is not written to recommendation records,
+  selection events, logs or saved preferences.
 
 ## Demo flow
 
@@ -125,7 +157,9 @@ any of these values.
 3. Switch to Discussion and apply preferences; Discussion Hub ranks first.
 4. Open Atrium Tables to show stale, degraded and low-confidence labels.
 5. Show the history chart and unavailable thermal preview state.
-6. Stop Ollama or set `LLM_ENABLED=false`, request recommendations again and
+6. Open AI Advisor, describe a quiet revision or group-discussion task, and
+   show the interpreted mode plus grounded best-room result.
+7. Stop Ollama or set `LLM_ENABLED=false`, request recommendations again and
    show that rank/score are unchanged while the source becomes `template`.
 
 ## Known limitations

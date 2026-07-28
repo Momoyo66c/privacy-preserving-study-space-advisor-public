@@ -2,6 +2,10 @@
 
 Authenticated fixtures are synthetic contract examples only. The credential fixture contains an explicitly fake password and must never be reused as a deployed credential. Session, preference-learning, and room-selection fixtures contain no name, email, student number, cookie, raw audio, thermal frame, radar track, or precise personal location.
 
+`study_advisor_request.json` and `study_advisor_response.json` demonstrate a
+non-identifying, transient study goal. Production input is privacy-filtered and
+must not be copied into recommendation or selection audit records.
+
 存放小型、匿名、可复现的跨模块测试负载。禁止提交原始语音、RGB 图像、个人信息和大型采集数据。
 
 模块 1 提供以下 SensorWindow 夹具：

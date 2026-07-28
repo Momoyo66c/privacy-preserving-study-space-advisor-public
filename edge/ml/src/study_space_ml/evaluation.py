@@ -11,7 +11,12 @@ from sklearn.base import clone
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import LeaveOneGroupOut
 
-from .constants import FEATURE_NAMES, MODEL_NAME, MODEL_VERSION, PEOPLE_COUNT_FEATURE_SCHEMA_VERSION
+from .constants import (
+    FEATURE_NAMES,
+    PEOPLE_COUNT_FEATURE_SCHEMA_VERSION,
+    PEOPLE_COUNT_MODEL_NAME,
+    PEOPLE_COUNT_MODEL_VERSION,
+)
 from .dataset import build_training_table
 from .predictor import occupancy_level_from_count
 from .train import build_model
@@ -161,8 +166,8 @@ def evaluate_leave_one_session(
 
     summary = {
         "evaluation_name": "leave_one_session_out",
-        "model_name": MODEL_NAME,
-        "model_version": MODEL_VERSION,
+        "model_name": PEOPLE_COUNT_MODEL_NAME,
+        "model_version": PEOPLE_COUNT_MODEL_VERSION,
         "feature_schema_version": PEOPLE_COUNT_FEATURE_SCHEMA_VERSION,
         "dataset_root": str(dataset_root),
         "labels_path": str(labels_path) if labels_path else None,

@@ -172,6 +172,20 @@ def _parser() -> argparse.ArgumentParser:
             "individual feature values are not printed or written"
         ),
     )
+    parser.add_argument(
+        "--max-consecutive-send-failures",
+        type=int,
+        default=5,
+        help=(
+            "exit after this many consecutive transport failures so a "
+            "supervisor can rebuild the SSH tunnel"
+        ),
+    )
+    parser.add_argument(
+        "--quiet-success",
+        action="store_true",
+        help="suppress one-line success events during long supervised runs",
+    )
     return parser
 
 
@@ -203,6 +217,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    if not 1 <= args.max_consecutive_send_failures <= 60:
+        print(
+            "max-consecutive-send-failures must be between 1 and 60",
+            file=sys.stderr,
+        )
+        return 2
     token = os.environ.get(args.token_env, "")
     if len(token) < 24 or any(char.isspace() for char in token):
         print(
@@ -215,6 +235,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         device = int(device)
     block_frames = round(args.sample_rate_hz * args.window_ms / 1_000)
     sent = 0
+    consecutive_send_failures = 0
     diagnostic_rows: list[dict[str, Any]] = []
     print(
         json.dumps(
@@ -253,12 +274,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 try:
                     result = post_feature(args.url, token, payload)
                 except (OSError, urllib.error.URLError, RuntimeError) as exc:
+                    consecutive_send_failures += 1
                     print(
                         json.dumps(
                             {
                                 "status": "send_failed",
                                 "error_type": type(exc).__name__,
                                 "sample_id": payload["sample_id"],
+                                "consecutive_failures": consecutive_send_failures,
                                 "raw_audio_persisted": False,
                             },
                             ensure_ascii=True,
@@ -266,8 +289,28 @@ def main(argv: Sequence[str] | None = None) -> int:
                         file=sys.stderr,
                         flush=True,
                     )
+                    if (
+                        consecutive_send_failures
+                        >= args.max_consecutive_send_failures
+                    ):
+                        print(
+                            json.dumps(
+                                {
+                                    "status": "transport_unavailable",
+                                    "consecutive_failures": (
+                                        consecutive_send_failures
+                                    ),
+                                    "raw_audio_persisted": False,
+                                },
+                                ensure_ascii=True,
+                            ),
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        return 3
                     time.sleep(0.25)
                     continue
+                consecutive_send_failures = 0
                 if args.diagnostic_summary:
                     diagnostic_rows.append(
                         {
@@ -276,19 +319,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                         }
                     )
                 sent += 1
-                print(
-                    json.dumps(
-                        {
-                            "status": "sent",
-                            "sample_id": result["sample_id"],
-                            "summary_count": sent,
-                            "input_overflowed": bool(overflowed),
-                            "raw_audio_persisted": False,
-                        },
-                        ensure_ascii=True,
-                    ),
-                    flush=True,
-                )
+                if not args.quiet_success:
+                    print(
+                        json.dumps(
+                            {
+                                "status": "sent",
+                                "sample_id": result["sample_id"],
+                                "summary_count": sent,
+                                "input_overflowed": bool(overflowed),
+                                "raw_audio_persisted": False,
+                            },
+                            ensure_ascii=True,
+                        ),
+                        flush=True,
+                    )
     except KeyboardInterrupt:
         return 0
     except Exception as exc:
