@@ -167,6 +167,7 @@ describe("App", () => {
     expect(screen.getByText("Live privacy-safe thermal view")).toBeInTheDocument();
     expect(screen.getByText("No boxes · no identity recognition")).toBeInTheDocument();
     expect(screen.getByText("Discussion allowed")).toBeInTheDocument();
+    expect(screen.queryByText("Overall suitability")).not.toBeInTheDocument();
   });
 
   it("uses today's goal in a dedicated AI advisor page without changing saved preferences", async () => {

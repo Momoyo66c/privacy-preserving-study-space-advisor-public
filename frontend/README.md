@@ -94,7 +94,9 @@ until room coordinates are available in the module 3 status response.
   and System views.
 - Live Monitor polls the backend once per second, draws a 32 x 24 thermal frame,
   overlays privacy-safe thermal-region boxes, reports the module 2 people-count
-  prediction and shows all four module 2 room-state classifications.
+  prediction and shows all four module 2 room-state classifications. Its sensor
+  metric row shows temperature, humidity and relative light only; composite
+  suitability remains outside the live-monitor view.
 - The dedicated `/thermal` view renders the short-lived MLX90640 preview in a
   stable responsive stage. Its backing canvas observes the stage rather than
   itself and is capped at 4096 pixels per edge to prevent resize feedback loops.

@@ -2,6 +2,10 @@
 
 ## What changed
 
+- Removed the composite suitability card from the administrator Live Monitor;
+  the remaining temperature, humidity and relative-light cards fill three
+  equal columns. Recommendation scoring and other administrator views are
+  unchanged.
 - Current-state labels display `Closed` whenever
   `light_relative_mean < 0.2`. This is a frontend presentation override only;
   it does not add a shared state enum or change recommendation scoring.

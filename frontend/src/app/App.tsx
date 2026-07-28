@@ -14,7 +14,6 @@ import {
   DoorOpen,
   Droplets,
   ExternalLink,
-  Gauge,
   Home,
   Languages,
   Lightbulb,
@@ -1714,7 +1713,6 @@ function LiveMonitor({ rooms }: { rooms: RoomStatus[] }) {
         <SensorMetric icon={<Thermometer />} label={choose("温度", "Temperature")} value={formatNumber(room.features.temperature_c, "°C", 1)} health={room.sensor_health.environment} />
         <SensorMetric icon={<Droplets />} label={choose("湿度", "Humidity")} value={formatNumber(room.features.humidity_pct, "%", 0)} health={room.sensor_health.environment} />
         <SensorMetric icon={<Lightbulb />} label={choose("相对光照", "Relative light level")} value={formatNumber(room.features.light_relative_mean ?? room.features.light_lux, room.features.light_relative_mean != null ? "" : " lx", room.features.light_relative_mean != null ? 2 : 0)} health={room.sensor_health.environment} />
-        <SensorMetric icon={<Gauge />} label={choose("综合适合度", "Overall suitability")} value={formatNumber(room.suitability_score, "/100", 0)} health={room.is_stale ? "degraded" : "ok"} />
       </section>
 
       <section className="state-classifier-panel">
