@@ -1,5 +1,7 @@
 # Privacy-Preserving Study Space Advisor
 
+部署文档中的网络地址、电脑路径和主机指纹均为示例；请使用自己的私有配置。完整处理范围和后续检查见 [公开版本隐私说明](docs/PUBLICATION_PRIVACY.md)。
+
 [![Gate A integration](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/gate-a-ci.yml/badge.svg)](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/gate-a-ci.yml)
 [![Backend CI](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/backend-ci.yml)
 [![Module 1 CI](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/module1-ci.yml/badge.svg)](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/module1-ci.yml)

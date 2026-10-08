@@ -4,6 +4,12 @@
 !.env.example
 *.pem
 *.key
+*.local.yaml
+*.local.yml
+*.local.toml
+*.p12
+*.pfx
+*.bundle
 
 # Python
 __pycache__/
