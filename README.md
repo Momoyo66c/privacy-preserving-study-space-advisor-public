@@ -2,10 +2,10 @@
 
 部署文档中的网络地址、电脑路径和主机指纹均为示例；请使用自己的私有配置。完整处理范围和后续检查见 [公开版本隐私说明](docs/PUBLICATION_PRIVACY.md)。
 
-[![Gate A integration](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/gate-a-ci.yml/badge.svg)](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/gate-a-ci.yml)
-[![Backend CI](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/backend-ci.yml)
-[![Module 1 CI](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/module1-ci.yml/badge.svg)](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/module1-ci.yml)
-[![Repository checks](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/repository-check.yml/badge.svg)](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor/actions/workflows/repository-check.yml)
+[![Gate A integration](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor-public/actions/workflows/gate-a-ci.yml/badge.svg)](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor-public/actions/workflows/gate-a-ci.yml)
+[![Backend CI](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor-public/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor-public/actions/workflows/backend-ci.yml)
+[![Module 1 CI](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor-public/actions/workflows/module1-ci.yml/badge.svg)](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor-public/actions/workflows/module1-ci.yml)
+[![Repository checks](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor-public/actions/workflows/repository-check.yml/badge.svg)](https://github.com/Momoyo66c/privacy-preserving-study-space-advisor-public/actions/workflows/repository-check.yml)
 
 面向校园学习空间的隐私保护型 AIoT 推荐系统。ESP32 Sensor Hub 采集低分辨率热阵列、相对光照和温湿度；由于现有 HW-485 无法稳定区分持续声强，当前实机演示使用 Windows 麦克风在内存中计算相对 RMS、标准差和峰值，再通过认证的 SSH 回环隧道交给 Raspberry Pi 5。边缘流程把数据转换为不含身份信息的房间状态摘要；后端负责状态、历史、短期预测、登录会话、选择记录和偏好学习；React Dashboard 展示房间状态、实时传感器、推荐、趋势和隐私说明。共享契约保留可选雷达字段，但最终生产硬件不安装雷达。
 
